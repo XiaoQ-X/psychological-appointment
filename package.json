@@ -1,0 +1,43 @@
+{
+  "name": "anxin-psychology-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "高校学生心理健康预约服务平台多端联动系统",
+  "workspaces": [
+    "apps/*",
+    "server",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,student,counselor,admin -c blue,green,magenta,yellow \"npm run dev:server\" \"npm run dev:student\" \"npm run dev:counselor\" \"npm run dev:admin\"",
+    "dev:server": "npm run dev -w @anxin/server",
+    "dev:student": "npm run dev -w @anxin/student",
+    "dev:counselor": "npm run dev -w @anxin/counselor",
+    "dev:admin": "npm run dev -w @anxin/admin",
+    "dev:miniapp:h5": "npm run dev:h5 -w @anxin/wechat-miniapp",
+    "dev:miniapp:mp-weixin": "npm run dev:mp-weixin -w @anxin/wechat-miniapp",
+    "build:miniapp:h5": "npm run build:h5 -w @anxin/wechat-miniapp",
+    "build:miniapp:mp-weixin": "npm run build:mp-weixin -w @anxin/wechat-miniapp",
+    "build:student": "npm run build -w @anxin/student",
+    "build:counselor": "npm run build -w @anxin/counselor",
+    "build:admin": "npm run build -w @anxin/admin",
+    "build": "npm run build:student && npm run build:counselor && npm run build:admin && npm run build:miniapp:mp-weixin",
+    "db:migrate": "npm run db:migrate -w @anxin/server",
+    "db:migrate:deploy": "npm run db:migrate:deploy -w @anxin/server",
+    "db:push": "npm run db:push -w @anxin/server",
+    "db:seed": "npm run db:seed -w @anxin/server",
+    "db:studio": "npm run db:studio -w @anxin/server",
+    "test": "npm run test:api",
+    "test:api": "npm run test:api -w @anxin/server",
+    "verify": "npm run build && npm run test:api",
+    "start:all": "powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1",
+    "reset:db": "powershell -ExecutionPolicy Bypass -File scripts/reset-db.ps1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "dotenv-cli": "^7.4.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

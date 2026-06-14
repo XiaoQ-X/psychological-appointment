@@ -1,0 +1,22 @@
+{
+  "name": "@anxin/wechat-miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:h5": "uni --host 0.0.0.0 --port 5176",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:h5": "uni build",
+    "build:mp-weixin": "uni build -p mp-weixin && node scripts/fix-mp-weixin-project-config.mjs"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5010220260529001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5010220260529001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5010220260529001",
+    "vue": "^3.5.35"
+  },
+  "devDependencies": {
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5010220260529001",
+    "vite": "5.2.8"
+  }
+}

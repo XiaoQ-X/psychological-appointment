@@ -1,0 +1,25 @@
+{
+  "name": "拾光心理",
+  "appid": "wxa13f65ead4f96fde",
+  "description": "拾光心理 LightCatch 微信小程序",
+  "versionName": "0.1.0",
+  "versionCode": "10",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wxa13f65ead4f96fde",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "minified": true
+    },
+    "usingComponents": true
+  },
+  "h5": {
+    "router": {
+      "mode": "hash"
+    },
+    "devServer": {
+      "port": 5176
+    }
+  }
+}

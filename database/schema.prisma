@@ -1,0 +1,467 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "mysql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum AppointmentStatus {
+  pending
+  confirmed
+  in_progress
+  completed
+  cancelled
+  rejected
+  no_show
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  crisis
+}
+
+enum ScheduleStatus {
+  available
+  booked
+  disabled
+}
+
+enum ShiftStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ReferralStatus {
+  pending
+  accepted
+  rejected
+  approved
+  closed
+}
+
+enum ArticleStatus {
+  draft
+  published
+  archived
+}
+
+enum ActivityStatus {
+  draft
+  published
+  cancelled
+}
+
+enum RiskProcessStatus {
+  open
+  following
+  handled
+  closed
+}
+
+model Student {
+  id                String             @id @default(cuid())
+  studentNo         String             @unique @map("student_no")
+  name              String
+  gender            String?
+  idCardLast6       String             @map("id_card_last6")
+  passwordHash      String             @map("password_hash")
+  college           String
+  major             String?
+  grade             String?
+  className         String?            @map("class_name")
+  phone             String?
+  avatar            String?
+  campusId          String?            @map("campus_id")
+  status            String             @default("active")
+  privacyAccepted   Boolean            @default(false) @map("privacy_accepted")
+  privacyAcceptedAt DateTime?          @map("privacy_accepted_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  campus            Campus?            @relation(fields: [campusId], references: [id])
+  appointments      Appointment[]
+  riskAssessments   RiskAssessment[]
+  assessmentResults AssessmentResult[]
+  recommendationResults RecommendationResult[]
+  activitySignups   ActivitySignup[]
+  feedbacks         Feedback[]
+  systemFeedbacks   SystemFeedback[]
+  referrals         Referral[]
+
+  @@map("students")
+}
+
+model Counselor {
+  id                   String             @id @default(cuid())
+  jobNo                String             @unique @map("job_no")
+  name                 String
+  gender               String?
+  idCardLast6          String             @default("123456") @map("id_card_last6")
+  passwordHash         String             @map("password_hash")
+  title                String?
+  phone                String?
+  avatar               String?
+  campusId             String?            @map("campus_id")
+  specialties          Json
+  introduction         String             @db.Text
+  status               String             @default("active")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  campus               Campus?            @relation(fields: [campusId], references: [id])
+  schedules            Schedule[]
+  appointments         Appointment[]
+  appointmentRecords   AppointmentRecord[]
+  articles             Article[]
+  sourceReferrals      Referral[]         @relation("SourceCounselor")
+  targetReferrals      Referral[]         @relation("TargetCounselor")
+  shiftApplications    ShiftApplication[]
+
+  @@map("counselors")
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  role         String   @default("admin")
+  status       String   @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
+
+model Campus {
+  id        String           @id @default(cuid())
+  name      String           @unique
+  address   String?
+  phone     String?
+  status    String           @default("active")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+  students  Student[]
+  counselors Counselor[]
+  rooms     CounselingRoom[]
+  schedules Schedule[]
+  appointments Appointment[]
+
+  @@map("campuses")
+}
+
+model CounselingRoom {
+  id          String        @id @default(cuid())
+  name        String
+  campusId    String        @map("campus_id")
+  location    String?
+  capacity    Int           @default(1)
+  status      String        @default("active")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  campus      Campus        @relation(fields: [campusId], references: [id])
+  schedules   Schedule[]
+  appointments Appointment[]
+
+  @@unique([campusId, name])
+  @@map("counseling_rooms")
+}
+
+model Schedule {
+  id          String         @id @default(cuid())
+  counselorId String         @map("counselor_id")
+  campusId    String         @map("campus_id")
+  roomId      String         @map("room_id")
+  startAt     DateTime       @map("start_at")
+  endAt       DateTime       @map("end_at")
+  status      ScheduleStatus @default(available)
+  source      String         @default("normal")
+  note        String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  counselor   Counselor      @relation(fields: [counselorId], references: [id])
+  campus      Campus         @relation(fields: [campusId], references: [id])
+  room        CounselingRoom @relation(fields: [roomId], references: [id])
+  appointment Appointment?
+
+  @@index([counselorId, startAt])
+  @@index([roomId, startAt])
+  @@map("schedules")
+}
+
+model Appointment {
+  id                String            @id @default(cuid())
+  appointmentNo     String            @unique @map("appointment_no")
+  studentId         String            @map("student_id")
+  counselorId       String            @map("counselor_id")
+  scheduleId        String?           @unique @map("schedule_id")
+  campusId          String?           @map("campus_id")
+  roomId            String?           @map("room_id")
+  type              String
+  concern           String            @db.Text
+  contactPhone      String?           @map("contact_phone")
+  status            AppointmentStatus @default(pending)
+  consentAccepted   Boolean           @default(false) @map("consent_accepted")
+  rejectReason      String?           @db.Text @map("reject_reason")
+  cancelReason      String?           @db.Text @map("cancel_reason")
+  rescheduleReason  String?           @db.Text @map("reschedule_reason")
+  completedAt       DateTime?         @map("completed_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  student           Student           @relation(fields: [studentId], references: [id])
+  counselor         Counselor         @relation(fields: [counselorId], references: [id])
+  schedule          Schedule?         @relation(fields: [scheduleId], references: [id])
+  campus            Campus?           @relation(fields: [campusId], references: [id])
+  room              CounselingRoom?   @relation(fields: [roomId], references: [id])
+  record            AppointmentRecord?
+  feedback          Feedback?
+
+  @@index([studentId, status])
+  @@index([counselorId, status])
+  @@map("appointments")
+}
+
+model AppointmentRecord {
+  id            String      @id @default(cuid())
+  appointmentId String      @unique @map("appointment_id")
+  counselorId   String      @map("counselor_id")
+  summary       String      @db.Text
+  intervention  String?     @db.Text
+  riskNote      String?     @db.Text @map("risk_note")
+  plan          String?     @db.Text
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  counselor     Counselor   @relation(fields: [counselorId], references: [id])
+
+  @@map("appointment_records")
+}
+
+model RiskAssessment {
+  id             String            @id @default(cuid())
+  studentId      String            @map("student_id")
+  score          Int
+  level          RiskLevel
+  answers        Json
+  source         String            @default("PHQ-9")
+  processStatus  RiskProcessStatus @default(open) @map("process_status")
+  feedback       String?           @db.Text
+  followupNotes  String?           @db.Text @map("followup_notes")
+  closedAt       DateTime?         @map("closed_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  student        Student           @relation(fields: [studentId], references: [id])
+
+  @@index([level, processStatus])
+  @@map("risk_assessments")
+}
+
+model Assessment {
+  id          String             @id @default(cuid())
+  code        String             @unique
+  title       String
+  description String             @db.Text
+  questions   Json
+  status      String             @default("active")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  results     AssessmentResult[]
+
+  @@map("assessments")
+}
+
+model AssessmentResult {
+  id           String     @id @default(cuid())
+  assessmentId String     @map("assessment_id")
+  studentId    String     @map("student_id")
+  score        Int
+  level        RiskLevel
+  answers      Json
+  suggestion   String     @db.Text
+  createdAt    DateTime   @default(now()) @map("created_at")
+  assessment   Assessment @relation(fields: [assessmentId], references: [id])
+  student      Student    @relation(fields: [studentId], references: [id])
+
+  @@map("assessment_results")
+}
+
+model RecommendationResult {
+  id                    String   @id @default(cuid())
+  studentId             String   @map("student_id")
+  answers               Json
+  recommendedCounselors Json     @map("recommended_counselors")
+  createdAt             DateTime @default(now()) @map("created_at")
+  student               Student  @relation(fields: [studentId], references: [id])
+
+  @@index([studentId, createdAt])
+  @@map("recommendation_results")
+}
+
+model Message {
+  id            String   @id @default(cuid())
+  recipientRole String   @map("recipient_role")
+  recipientId   String   @map("recipient_id")
+  type          String
+  title         String
+  content       String   @db.Text
+  relatedType   String?  @map("related_type")
+  relatedId     String?  @map("related_id")
+  isRead        Boolean  @default(false) @map("is_read")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([recipientRole, recipientId, isRead])
+  @@map("messages")
+}
+
+model Article {
+  id          String        @id @default(cuid())
+  title       String
+  category    String
+  cover       String?
+  summary     String       @db.Text
+  content     String       @db.Text
+  authorRole  String       @map("author_role")
+  authorId    String?      @map("author_id")
+  counselorId String?      @map("counselor_id")
+  status      ArticleStatus @default(draft)
+  viewCount   Int          @default(0) @map("view_count")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  counselor   Counselor?   @relation(fields: [counselorId], references: [id])
+
+  @@index([status, category])
+  @@map("articles")
+}
+
+model Activity {
+  id          String           @id @default(cuid())
+  title       String
+  category    String
+  location    String
+  startAt     DateTime         @map("start_at")
+  endAt       DateTime         @map("end_at")
+  signupEndAt DateTime         @map("signup_end_at")
+  capacity    Int
+  description String           @db.Text
+  status      ActivityStatus   @default(draft)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  signups     ActivitySignup[]
+
+  @@map("activities")
+}
+
+model ActivitySignup {
+  id          String   @id @default(cuid())
+  activityId  String   @map("activity_id")
+  studentId   String   @map("student_id")
+  name        String
+  phone       String
+  remark      String?
+  status      String   @default("signed")
+  createdAt   DateTime @default(now()) @map("created_at")
+  activity    Activity @relation(fields: [activityId], references: [id])
+  student     Student  @relation(fields: [studentId], references: [id])
+
+  @@unique([activityId, studentId])
+  @@map("activity_signups")
+}
+
+model Referral {
+  id                 String         @id @default(cuid())
+  studentId           String         @map("student_id")
+  sourceCounselorId   String         @map("source_counselor_id")
+  targetCounselorId   String         @map("target_counselor_id")
+  reason              String         @db.Text
+  status              ReferralStatus @default(pending)
+  rejectReason        String?        @db.Text @map("reject_reason")
+  adminNote           String?        @db.Text @map("admin_note")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  student             Student        @relation(fields: [studentId], references: [id])
+  sourceCounselor     Counselor      @relation("SourceCounselor", fields: [sourceCounselorId], references: [id])
+  targetCounselor     Counselor      @relation("TargetCounselor", fields: [targetCounselorId], references: [id])
+
+  @@map("referrals")
+}
+
+model ShiftApplication {
+  id          String       @id @default(cuid())
+  counselorId String       @map("counselor_id")
+  scheduleId  String?      @map("schedule_id")
+  fromStartAt DateTime?    @map("from_start_at")
+  fromEndAt   DateTime?    @map("from_end_at")
+  toStartAt   DateTime     @map("to_start_at")
+  toEndAt     DateTime     @map("to_end_at")
+  reason      String       @db.Text
+  status      ShiftStatus  @default(pending)
+  adminNote   String?      @db.Text @map("admin_note")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  counselor   Counselor    @relation(fields: [counselorId], references: [id])
+
+  @@map("shift_applications")
+}
+
+model Feedback {
+  id            String      @id @default(cuid())
+  appointmentId String      @unique @map("appointment_id")
+  studentId     String      @map("student_id")
+  rating        Int
+  tags          Json
+  content       String?     @db.Text
+  createdAt     DateTime    @default(now()) @map("created_at")
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  student       Student     @relation(fields: [studentId], references: [id])
+
+  @@map("feedbacks")
+}
+
+model SystemFeedback {
+  id          String    @id @default(cuid())
+  studentId   String    @map("student_id")
+  type        String
+  content     String    @db.Text
+  contact     String?
+  status      String    @default("pending")
+  adminReply  String?   @db.Text @map("admin_reply")
+  handledBy   String?   @map("handled_by")
+  handledAt   DateTime? @map("handled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  student     Student   @relation(fields: [studentId], references: [id])
+
+  @@index([studentId])
+  @@index([status])
+  @@index([type])
+  @@map("system_feedbacks")
+}
+
+model OperationLog {
+  id         String   @id @default(cuid())
+  actorRole  String   @map("actor_role")
+  actorId    String?  @map("actor_id")
+  action     String
+  entity     String
+  entityId   String?  @map("entity_id")
+  detail     Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorRole, action])
+  @@map("operation_logs")
+}
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

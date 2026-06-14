@@ -1,0 +1,42 @@
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+build/
+**/build/
+
+# Runtime and local environment
+.env
+.env.local
+.env.*.local
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Generated test and automation artifacts
+.playwright-cli/
+test-results/
+playwright-report/
+output/
+**/output/
+
+# Uploaded runtime files
+uploads/*
+!uploads/.gitkeep
+**/uploads/*
+!**/uploads/.gitkeep
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Release archives should be attached to GitHub Releases, not committed
+*.zip
+*.7z
+*.rar

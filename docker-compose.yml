@@ -1,0 +1,25 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: anxin_psychology
+      MYSQL_USER: anxin
+      MYSQL_PASSWORD: anxin_password
+      TZ: Asia/Shanghai
+    ports:
+      - "${MYSQL_PORT:-3308}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - anxin_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uanxin", "-panxin_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  anxin_mysql_data:

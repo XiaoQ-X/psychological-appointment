@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "codex/**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_password
+          MYSQL_DATABASE: anxin_psychology
+          MYSQL_USER: anxin
+          MYSQL_PASSWORD: anxin_password
+        ports:
+          - 3308:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uanxin -panxin_password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    env:
+      DATABASE_URL: mysql://anxin:anxin_password@127.0.0.1:3308/anxin_psychology
+      SHADOW_DATABASE_URL: mysql://root:root_password@127.0.0.1:3308/anxin_shadow
+      JWT_SECRET: ci-only-secret-at-least-32-random-characters
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Prepare local environment
+        run: cp .env.example .env
+
+      - name: Create Prisma shadow database
+        run: mysql -h 127.0.0.1 -P 3308 -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS anxin_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+      - run: npm run db:migrate:deploy
+      - run: npm run db:seed
+      - run: npm run build
+      - run: npm run test:api
