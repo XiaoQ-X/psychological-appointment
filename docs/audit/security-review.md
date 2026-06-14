@@ -45,6 +45,20 @@
 - 强制控制：API 测试若发现当前数据库不是 `anxin_test` 会拒绝运行。
 - 生命周期：测试前重建并迁移/seed，测试结束无论成功失败都再次重置。
 
+### SEC-010：旧 token 在改密/重置后仍可使用
+
+- 严重度：Medium
+- 修复：学生、咨询师和管理员增加 `sessionVersion`；JWT 写入登录时的会话版本。
+- 强制控制：自助改密、管理员重置学生/咨询师密码时递增 `sessionVersion`，旧 token 访问业务接口或 `/api/auth/me` 返回 `401` 和 `SESSION_REVOKED`。
+- 验证：`npm run test:api` 连续两次覆盖自助改密撤销旧 token、管理员重置撤销旧 token。
+- 剩余风险：浏览器端仍使用 Bearer token，下一步应评估 HttpOnly Cookie 或短期 access token + refresh token。
+
+### SEC-011：4xx 业务错误打印服务端堆栈
+
+- 严重度：Low
+- 修复：全局错误处理器只对 5xx/未知错误输出 `console.error`，避免登录失败、弱密码等预期 4xx 污染日志。
+- 验证：API 测试中预期失败请求不再打印账号密码错误堆栈。
+
 ## 未解决
 
 ### SEC-005：JWT 存储在 localStorage
@@ -52,7 +66,8 @@
 - 严重度：Medium
 - 位置：`packages/api-client/index.js:5`
 - 影响：发生 XSS 时令牌可被读取。
-- 修复建议：优先评估 HttpOnly、Secure、SameSite 会话 Cookie；若继续 Bearer Token，缩短有效期并增加刷新/撤销机制及严格 CSP。
+- 现有控制：`sessionVersion` 已支持服务端撤销旧 token；管理员重置密码和用户改密后旧 token 失效。
+- 修复建议：优先评估 HttpOnly、Secure、SameSite 会话 Cookie；若继续 Bearer Token，缩短有效期、增加刷新令牌轮换及严格 CSP。
 
 ### SEC-006：开发 JWT 密钥回退
 
@@ -85,3 +100,10 @@
 3. 上传文件私有存储和访问控制。
 4. uni-app/Vite 升级及锁文件审查。
 5. 敏感操作日志留存、数据导出/删除和隐私合规流程。
+
+## 依赖升级判断（2026-06-14）
+
+- 已安全更新：非强制 `npm audit fix --omit=dev` 仅将根 lockfile 中 Vite 从 `6.4.2` 提升到 `6.4.3`，已通过 `npm ci`、四端 build 和 API 测试。
+- uni-app / vue-i18n / jimp / ws：漏洞来自 `@dcloudio/*` alpha 工具链传递依赖，`npm audit fix --force` 会安装 `@dcloudio/uni-mp-weixin@0.0.973`，属于破坏性降级/跨版本替换，未执行。
+- Vite / esbuild：根 Vite 已小版本更新，但 uni-app 内部仍带旧链；需要 DCloud 整套升级分支验证 H5 与 mp-weixin。
+- ExcelJS / uuid：`uuid <11.1.1` 由 `exceljs@4.4.0` 传递引入，强制修复会安装 `exceljs@3.4.0`，属于破坏性降级；当前 Excel 导入路径不调用公告中的 UUID buffer 参数，保留并跟踪上游。

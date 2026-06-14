@@ -62,6 +62,7 @@ export function saveSession(data) {
 }
 
 export function updateCurrentUser(data = {}) {
+  if (data.token) uni.setStorageSync(STORAGE_TOKEN, data.token);
   if (data.role) uni.setStorageSync(STORAGE_ROLE, data.role);
   if (data.user) uni.setStorageSync(STORAGE_USER, data.user);
 }

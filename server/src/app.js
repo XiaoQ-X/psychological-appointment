@@ -839,7 +839,7 @@ async function loginWithPassword({ model, where, password, role }) {
     error.status = 401;
     throw error;
   }
-  const token = signToken({ id: user.id, role });
+  const token = signToken({ id: user.id, role, sessionVersion: user.sessionVersion });
   return {
     token,
     role,
@@ -904,12 +904,14 @@ app.post("/api/auth/change-password", requireAuth(["student", "counselor"], { al
     where: { id: user.id },
     data: {
       passwordHash: await bcrypt.hash(newPassword, 12),
-      mustChangePassword: false
+      mustChangePassword: false,
+      sessionVersion: { increment: 1 }
     },
     include: { campus: true }
   });
   await logOperation(req, `${req.user.role}:change-password`, `${req.user.role}s`, user.id, {});
   return success(res, {
+    token: signToken({ id: updated.id, role: req.user.role, sessionVersion: updated.sessionVersion }),
     role: req.user.role,
     mustChangePassword: false,
     user: safeUser(updated)
@@ -2007,16 +2009,96 @@ app.post("/api/counselor/articles", requireAuth(["counselor"]), asyncHandler(asy
   return success(res, article, "文章已发布");
 }));
 
+function startOfLocalDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function dateKey(date) {
+  return startOfLocalDay(date).toISOString().slice(0, 10);
+}
+
+function lastDays(count) {
+  const today = startOfLocalDay(new Date());
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (count - index - 1));
+    return date;
+  });
+}
+
 app.get("/api/admin/dashboard", requireAuth(["admin"]), asyncHandler(async (req, res) => {
-  const [students, counselors, appointments, pending, risks, activities] = await Promise.all([
+  const trendDays = lastDays(7);
+  const trendStart = trendDays[0];
+  const [
+    students,
+    counselors,
+    appointments,
+    pending,
+    risks,
+    activities,
+    schedules,
+    pendingShifts,
+    pendingReferrals,
+    pendingFeedbacks,
+    statusGroups,
+    typeGroups,
+    trendRows,
+    recentAppointments,
+    recentLogs
+  ] = await Promise.all([
     prisma.student.count({ where: { status: { not: "deleted" } } }),
     prisma.counselor.count({ where: { status: "active" } }),
     prisma.appointment.count(),
     prisma.appointment.count({ where: { status: "pending" } }),
     prisma.riskAssessment.count({ where: { level: { in: ["high", "crisis"] }, processStatus: { not: "closed" } } }),
-    prisma.activity.count({ where: { status: "published" } })
+    prisma.activity.count({ where: { status: "published" } }),
+    prisma.schedule.count(),
+    prisma.shiftApplication.count({ where: { status: "pending" } }),
+    prisma.referral.count({ where: { status: "pending" } }),
+    prisma.systemFeedback.count({ where: { status: { in: ["pending", "processing"] } } }),
+    prisma.appointment.groupBy({ by: ["status"], _count: { status: true } }),
+    prisma.appointment.groupBy({ by: ["type"], _count: { type: true } }),
+    prisma.appointment.findMany({
+      where: { createdAt: { gte: trendStart } },
+      select: { createdAt: true }
+    }),
+    prisma.appointment.findMany({
+      take: 5,
+      include: appointmentInclude(),
+      orderBy: { createdAt: "desc" }
+    }),
+    prisma.operationLog.findMany({
+      take: 6,
+      orderBy: { createdAt: "desc" }
+    })
   ]);
-  return success(res, { students, counselors, appointments, pendingAppointments: pending, activeRisks: risks, activities });
+  const trendCounts = new Map();
+  trendRows.forEach((item) => {
+    const key = dateKey(item.createdAt);
+    trendCounts.set(key, (trendCounts.get(key) || 0) + 1);
+  });
+  return success(res, {
+    students,
+    counselors,
+    appointments,
+    pendingAppointments: pending,
+    activeRisks: risks,
+    activities,
+    schedules,
+    pendingShifts,
+    pendingReferrals,
+    pendingFeedbacks,
+    appointmentStatus: statusGroups.map((item) => ({ status: item.status, count: item._count.status })),
+    appointmentTypes: typeGroups.map((item) => ({ type: item.type || "unknown", count: item._count.type })),
+    appointmentTrend: trendDays.map((day) => {
+      const key = dateKey(day);
+      return { date: key, count: trendCounts.get(key) || 0 };
+    }),
+    recentAppointments: recentAppointments.map(safeAppointment),
+    recentLogs
+  });
 }));
 
 app.get("/api/admin/students/import-template", requireAuth(["admin"]), asyncHandler(async (req, res) => (
@@ -2266,7 +2348,8 @@ app.post("/api/admin/students/:id/reset-password", requireAuth(["admin"]), async
     where: { id: existing.id },
     data: {
       passwordHash: await bcrypt.hash(temporaryPassword, 12),
-      mustChangePassword: true
+      mustChangePassword: true,
+      sessionVersion: { increment: 1 }
     }
   });
   await logOperation(req, "student:reset-password", "students", student.id, {});
@@ -2353,7 +2436,8 @@ app.post("/api/admin/counselors/:id/reset-password", requireAuth(["admin"]), asy
     where: { id: existing.id },
     data: {
       passwordHash: await bcrypt.hash(temporaryPassword, 12),
-      mustChangePassword: true
+      mustChangePassword: true,
+      sessionVersion: { increment: 1 }
     }
   });
   await logOperation(req, "counselor:reset-password", "counselors", counselor.id, {});
@@ -2824,7 +2908,6 @@ app.put("/api/admin/settings", requireAuth(["admin"]), asyncHandler(async (req, 
 app.use((req, res) => fail(res, 404, "接口不存在"));
 
 app.use((error, req, res, next) => {
-  console.error(error);
   if (res.headersSent) return next(error);
   if (error instanceof multer.MulterError) {
     const isAvatarUpload = req.path.endsWith("/profile/avatar");
@@ -2834,6 +2917,9 @@ app.use((error, req, res, next) => {
     return fail(res, 400, message, { code: error.code });
   }
   const status = error.code === "P2002" ? 409 : error.status || 500;
+  if (status >= 500) {
+    console.error(error);
+  }
   const message = error.code === "P2002"
     ? "数据已存在，请检查唯一字段"
     : status >= 500

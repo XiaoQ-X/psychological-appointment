@@ -1,0 +1,3 @@
+ALTER TABLE `students` ADD COLUMN `session_version` INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE `counselors` ADD COLUMN `session_version` INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE `admins` ADD COLUMN `session_version` INTEGER NOT NULL DEFAULT 1;

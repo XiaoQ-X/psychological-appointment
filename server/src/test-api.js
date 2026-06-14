@@ -60,6 +60,14 @@ async function expectRequestFailure(baseUrl, apiPath, options, expectedMessage) 
   throw new Error(`${options.method || "GET"} ${apiPath} should have failed.`);
 }
 
+async function expectFailureCode(baseUrl, apiPath, options, expectedCode) {
+  const payload = await expectRequestFailure(baseUrl, apiPath, options);
+  if (payload?.error?.code !== expectedCode) {
+    throw new Error(`Expected error code "${expectedCode}" from ${apiPath}, got "${payload?.error?.code || "none"}"`);
+  }
+  return payload;
+}
+
 async function workbookBlob(headers, rows) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Import");
@@ -303,7 +311,14 @@ async function main() {
     ) {
       throw new Error("Password-change flags were not cleared.");
     }
+    if (!studentPasswordChange.token || !counselorPasswordChange.token) {
+      throw new Error("Password change must return a refreshed token with the new session version.");
+    }
     checks.push("student-and-counselor-password-change");
+
+    await expectFailureCode(baseUrl, "/api/auth/me", { token: studentLogin.token }, "SESSION_REVOKED");
+    await expectFailureCode(baseUrl, "/api/auth/me", { token: counselorLogin.token }, "SESSION_REVOKED");
+    checks.push("self-password-change-revokes-old-tokens");
 
     await expectRequestFailure(baseUrl, "/api/auth/student/login", {
       method: "POST",
@@ -457,9 +472,31 @@ async function main() {
     }
     checks.push("admin-see-appointment");
 
+    const dashboardAfter = await request(baseUrl, "/api/admin/dashboard", { token: adminLogin.token });
+    if (
+      dashboardAfter.appointments < 2 ||
+      !dashboardAfter.appointmentStatus?.some((item) => item.status === "completed" && item.count >= 1) ||
+      !dashboardAfter.appointmentStatus?.some((item) => item.status === "cancelled" && item.count >= 1) ||
+      !dashboardAfter.appointmentTypes?.some((item) => item.count >= 1) ||
+      !dashboardAfter.appointmentTrend?.length ||
+      !dashboardAfter.recentAppointments?.some((item) => item.id === created.id)
+    ) {
+      throw new Error("Admin dashboard aggregation does not reflect runtime appointment data.");
+    }
+    checks.push("admin-dashboard-aggregation");
+
     const logs = await request(baseUrl, "/api/admin/logs", { token: adminLogin.token });
     if (!logs.length) throw new Error("No operation logs found after runtime operations.");
     checks.push("operation-logs");
+
+    const secondStudentReset = await request(baseUrl, `/api/admin/students/${importedStudent.id}/reset-password`, { method: "POST", token: adminLogin.token });
+    const secondCounselorReset = await request(baseUrl, `/api/admin/counselors/${importedCounselor.id}/reset-password`, { method: "POST", token: adminLogin.token });
+    if (!secondStudentReset.temporaryPassword || !secondCounselorReset.temporaryPassword) {
+      throw new Error("Second password reset did not return temporary passwords.");
+    }
+    await expectFailureCode(baseUrl, "/api/student/schedules", { token: studentRelogin.token }, "SESSION_REVOKED");
+    await expectFailureCode(baseUrl, "/api/counselor/appointments", { token: counselorRelogin.token }, "SESSION_REVOKED");
+    checks.push("admin-reset-revokes-old-tokens");
 
     console.log(JSON.stringify({ success: true, checks }, null, 2));
   } finally {

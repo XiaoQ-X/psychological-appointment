@@ -72,6 +72,7 @@ model Student {
   idCardLast6       String             @map("id_card_last6")
   passwordHash      String             @map("password_hash")
   mustChangePassword Boolean           @default(true) @map("must_change_password")
+  sessionVersion    Int                @default(1) @map("session_version")
   college           String
   major             String?
   grade             String?
@@ -105,6 +106,7 @@ model Counselor {
   idCardLast6          String             @default("123456") @map("id_card_last6")
   passwordHash         String             @map("password_hash")
   mustChangePassword   Boolean            @default(true) @map("must_change_password")
+  sessionVersion       Int                @default(1) @map("session_version")
   title                String?
   phone                String?
   avatar               String?
@@ -131,6 +133,7 @@ model Admin {
   username     String   @unique
   name         String
   passwordHash String   @map("password_hash")
+  sessionVersion Int    @default(1) @map("session_version")
   role         String   @default("admin")
   status       String   @default("active")
   createdAt    DateTime @default(now()) @map("created_at")

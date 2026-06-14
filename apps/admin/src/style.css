@@ -681,6 +681,42 @@ input:focus, select:focus, textarea:focus {
   background: #F9FAFB;
 }
 
+.state-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid #BFDBFE;
+  border-radius: 8px;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  font-size: 14px;
+}
+
+.state-banner .btn {
+  min-height: 36px;
+}
+
+.state-error {
+  border-color: #FECACA;
+  background: #FEF2F2;
+  color: #B91C1C;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  margin: 0;
+  color: #6B7280;
+  font-size: 14px;
+  text-align: center;
+}
+
 .chart-box-center {
   display: flex;
   align-items: center;
@@ -709,6 +745,61 @@ input:focus, select:focus, textarea:focus {
   fill: var(--brand-primary);
 }
 
+.trend-bars {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 18px 18px 14px;
+}
+
+.trend-bars.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trend-bar-item {
+  display: grid;
+  grid-template-rows: 24px 1fr 20px;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  text-align: center;
+}
+
+.trend-bar-value {
+  color: #1F2937;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.trend-bar-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  border-radius: 999px;
+  background: #E5E7EB;
+  overflow: hidden;
+}
+
+.trend-bar-track i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  min-height: 8px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, #60A5FA 0%, var(--brand-primary) 100%);
+}
+
+.trend-bar-label {
+  color: #6B7280;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .donut-chart {
   width: 148px;
   height: 148px;
@@ -733,6 +824,10 @@ input:focus, select:focus, textarea:focus {
   display: inline-block;
   margin-right: 8px;
   border-radius: 999px;
+}
+
+.type-distribution.empty {
+  gap: 0;
 }
 
 .legend-blue { background: var(--brand-primary); }
@@ -2317,6 +2412,97 @@ tbody tr:last-child td {
 @media (max-width: 1180px) {
   body {
     min-width: 1024px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    min-width: 0;
+  }
+
+  .admin-shell {
+    display: block;
+  }
+
+  .admin-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    width: 100%;
+    max-height: 236px;
+  }
+
+  .sidebar-brand {
+    min-height: 64px;
+    padding: 12px 16px;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    gap: 8px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .sidebar-nav button {
+    width: auto;
+    min-width: max-content;
+    padding: 0 14px;
+    border-radius: 6px;
+  }
+
+  .sidebar-user {
+    min-height: 56px;
+    padding: 12px 16px;
+  }
+
+  .admin-main {
+    margin-left: 0;
+  }
+
+  .admin-topbar {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+  }
+
+  .topbar-search {
+    width: 100%;
+  }
+
+  .chart-grid,
+  .stat-grid,
+  .stat-grid-four,
+  .stat-grid-three {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-box {
+    height: auto;
+    min-height: 220px;
+  }
+
+  .trend-bars {
+    min-height: 220px;
+    gap: 8px;
+    padding: 16px 12px 12px;
+  }
+
+  .trend-bar-track {
+    min-height: 136px;
+  }
+
+  .chart-box-center {
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
   }
 }
 

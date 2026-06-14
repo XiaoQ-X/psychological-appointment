@@ -47,6 +47,16 @@ Content-Type: application/json
 
 学生和咨询师由管理员新增、导入或重置密码后会获得随机临时密码。`mustChangePassword=true` 时，除 `/api/auth/me`、`/api/auth/change-password` 和 `/api/auth/logout` 外，业务接口统一返回 `403`。新密码至少 8 位，不能为纯数字、常见弱密码或与旧密码相同，并要求包含字母和特殊字符。
 
+登录 token 包含服务端会话版本。学生/咨询师自助改密或管理员重置密码后，旧 token 会立即失效，业务接口返回：
+
+```json
+{
+  "success": false,
+  "message": "登录状态已失效",
+  "error": { "code": "SESSION_REVOKED" }
+}
+```
+
 ## 学生端
 
 | 方法 | 路径 | 说明 |
@@ -144,6 +154,28 @@ Content-Type: application/json
 | `GET` | `/api/admin/shift-applications` | 调班审批列表 |
 | `POST` | `/api/admin/shift-applications/:id/approve` | 通过调班 |
 | `POST` | `/api/admin/shift-applications/:id/reject` | 驳回调班 |
+
+Dashboard 返回字段包括：
+
+```json
+{
+  "students": 12,
+  "counselors": 4,
+  "appointments": 28,
+  "pendingAppointments": 3,
+  "activeRisks": 1,
+  "activities": 2,
+  "schedules": 16,
+  "pendingShifts": 0,
+  "pendingReferrals": 0,
+  "pendingFeedbacks": 1,
+  "appointmentStatus": [{ "status": "completed", "count": 10 }],
+  "appointmentTypes": [{ "type": "首次咨询", "count": 6 }],
+  "appointmentTrend": [{ "date": "2026-06-14", "count": 2 }],
+  "recentAppointments": [],
+  "recentLogs": []
+}
+```
 | `GET` | `/api/admin/risk-records` | 风险预警 |
 | `POST` | `/api/admin/risk-records/:id/followup` | 添加跟进 |
 | `POST` | `/api/admin/risk-records/:id/close` | 结案 |

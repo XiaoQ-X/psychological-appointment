@@ -2493,6 +2493,7 @@ async function changePassword() {
         newPassword: passwordForm.newPassword
       }
     });
+    if (data.token) api.setToken(data.token);
     me.value = data.user;
     mustChangePassword.value = false;
     Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });

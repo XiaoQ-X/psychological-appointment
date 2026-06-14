@@ -17,7 +17,7 @@ function jwtSecret() {
 }
 
 function signToken(user) {
-  return jwt.sign({ id: user.id, role: user.role }, jwtSecret(), {
+  return jwt.sign({ id: user.id, role: user.role, sessionVersion: user.sessionVersion || 1 }, jwtSecret(), {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d"
   });
 }
@@ -62,6 +62,9 @@ function requireAuth(roles = [], options = {}) {
       const profile = await loadProfile(payload.role, payload.id);
       if (!profile || profile.status === "disabled") {
         return fail(res, 401, "登录状态已失效");
+      }
+      if (Number(payload.sessionVersion || 0) !== Number(profile.sessionVersion || 1)) {
+        return fail(res, 401, "登录状态已失效", { code: "SESSION_REVOKED" });
       }
       if (
         profile.mustChangePassword &&

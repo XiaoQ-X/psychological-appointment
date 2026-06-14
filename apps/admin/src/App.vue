@@ -92,6 +92,11 @@
 
         <section v-if="page === 'dashboard'" class="page-section">
           <h1 class="page-title">数据看板</h1>
+          <p v-if="dashboardError" class="state-banner state-error">
+            <span>{{ dashboardError }}</span>
+            <button class="btn btn-light" type="button" @click="loadDashboard">重试</button>
+          </p>
+          <p v-else-if="dashboardLoading" class="state-banner">看板数据加载中...</p>
           <article class="brand-welcome-card custom-shadow">
             <div>
               <p>拾光心理 LightCatch</p>
@@ -123,7 +128,16 @@
           <div class="chart-grid">
             <article class="panel-card custom-shadow">
               <h3>预约趋势（近7日）</h3>
-              <div class="chart-box">
+              <div class="chart-box trend-bars" :class="{ empty: !dashboardTrend.length }">
+                <template v-if="dashboardTrend.length">
+                  <div v-for="item in dashboardTrend" :key="item.date" class="trend-bar-item">
+                    <span class="trend-bar-value">{{ item.count }}</span>
+                    <span class="trend-bar-track"><i :style="{ height: item.height + '%' }"></i></span>
+                    <span class="trend-bar-label">{{ item.label }}</span>
+                  </div>
+                </template>
+                <p v-else class="empty-state">近 7 日暂无预约数据</p>
+                <div v-if="false">
                 <svg class="trend-chart" viewBox="0 0 360 180" role="img" aria-label="预约趋势折线图">
                   <polyline points="16,136 70,106 124,118 178,72 232,86 286,58 344,76" />
                   <polygon points="16,136 70,106 124,118 178,72 232,86 286,58 344,76 344,164 16,164" />
@@ -131,17 +145,27 @@
                     <circle v-for="point in trendPoints" :key="point" :cx="point.split(',')[0]" :cy="point.split(',')[1]" r="4" />
                   </g>
                 </svg>
+                </div>
               </div>
             </article>
             <article class="panel-card custom-shadow">
               <h3>咨询类型分布</h3>
-              <div class="chart-box chart-box-center">
+              <div class="chart-box chart-box-center type-distribution" :class="{ empty: !dashboardTypes.length }">
+                <template v-if="dashboardTypes.length">
+                  <div class="donut-chart" :style="{ background: typeDonutBackground }"></div>
+                  <ul class="chart-legend">
+                    <li v-for="item in dashboardTypes" :key="item.type"><span :style="{ background: item.color }"></span>{{ item.type }} {{ item.percent }}%</li>
+                  </ul>
+                </template>
+                <p v-else class="empty-state">暂无咨询类型数据</p>
+                <div v-if="false">
                 <div class="donut-chart"></div>
                 <ul class="chart-legend">
                   <li><span class="legend-blue"></span>常规咨询 45%</li>
                   <li><span class="legend-green"></span>初访评估 30%</li>
                   <li><span class="legend-orange"></span>危机干预 15%</li>
                 </ul>
+                </div>
               </div>
             </article>
           </div>
@@ -149,7 +173,8 @@
 
           <article class="panel-card custom-shadow">
             <h3>最近预约</h3>
-            <AdminTable :columns="recentAppointmentColumns" :rows="appointments.slice(0, 3)" />
+            <p v-if="!recentDashboardAppointments.length" class="empty-state">暂无最近预约</p>
+            <AdminTable v-else :columns="recentAppointmentColumns" :rows="recentDashboardAppointments" />
           </article>
         </section>
 
@@ -1553,8 +1578,17 @@ const dashboardData = ref({
   activeRisks: 0,
   activities: 0,
   pendingShifts: 0,
-  pendingReferrals: 0
+  pendingReferrals: 0,
+  pendingFeedbacks: 0,
+  schedules: 0,
+  appointmentStatus: [],
+  appointmentTrend: [],
+  appointmentTypes: [],
+  recentAppointments: [],
+  recentLogs: []
 });
+const dashboardLoading = ref(false);
+const dashboardError = ref("");
 
 const dashboardStats = computed(() => [
   { label: "学生总数", value: dashboardData.value.students, hint: "以导入账号为准", target: "students", icon: Users, iconClass: "blue", textClass: "", hintClass: "" },
@@ -1565,6 +1599,45 @@ const dashboardStats = computed(() => [
   { label: "待审批调班", value: dashboardData.value.pendingShifts, hint: "来自调班申请", target: "shift_approval", icon: ClipboardCheck, iconClass: "orange", textClass: "orange-text", hintClass: "" },
   { label: "待处理转介", value: dashboardData.value.pendingReferrals, hint: "来自转介流程", target: "referral", icon: ArrowLeftRight, iconClass: "purple", textClass: "purple-text", hintClass: "" }
 ]);
+
+const chartColors = ["#2563eb", "#16a34a", "#f97316", "#9333ea", "#dc2626", "#0891b2", "#64748b"];
+const dashboardTrend = computed(() => {
+  const rows = Array.isArray(dashboardData.value.appointmentTrend) ? dashboardData.value.appointmentTrend : [];
+  if (!rows.some((item) => Number(item.count || 0) > 0)) return [];
+  const max = Math.max(...rows.map((item) => Number(item.count || 0)), 1);
+  return rows.map((item) => ({
+    ...item,
+    label: String(item.date || "").slice(5),
+    count: Number(item.count || 0),
+    height: Math.max(8, Math.round((Number(item.count || 0) / max) * 100))
+  }));
+});
+const dashboardTypes = computed(() => {
+  const rows = Array.isArray(dashboardData.value.appointmentTypes) ? dashboardData.value.appointmentTypes : [];
+  const total = rows.reduce((sum, item) => sum + Number(item.count || 0), 0);
+  if (!total) return [];
+  return rows.map((item, index) => ({
+    type: item.type || "未分类",
+    count: Number(item.count || 0),
+    percent: Math.round((Number(item.count || 0) / total) * 100),
+    color: chartColors[index % chartColors.length]
+  }));
+});
+const typeDonutBackground = computed(() => {
+  if (!dashboardTypes.value.length) return "";
+  let start = 0;
+  const stops = dashboardTypes.value.map((item) => {
+    const end = start + item.percent;
+    const segment = `${item.color} ${start}% ${end}%`;
+    start = end;
+    return segment;
+  });
+  return `conic-gradient(${stops.join(", ")})`;
+});
+const recentDashboardAppointments = computed(() => {
+  const rows = Array.isArray(dashboardData.value.recentAppointments) ? dashboardData.value.recentAppointments : [];
+  return rows.map(mapAppointment);
+});
 
 const students = ref([]);
 const counselors = ref([]);
@@ -2396,8 +2469,20 @@ async function loadCounselors() {
 }
 
 async function loadDashboard() {
-  const data = await adminRequest("/api/admin/dashboard", {}, "数据看板加载失败");
-  dashboardData.value = { ...dashboardData.value, ...data };
+  dashboardLoading.value = true;
+  dashboardError.value = "";
+  try {
+    const data = await adminRequest("/api/admin/dashboard", {}, "数据看板加载失败");
+    dashboardData.value = { ...dashboardData.value, ...data };
+    if (Array.isArray(data.recentAppointments)) {
+      appointments.value = data.recentAppointments.map(mapAppointment);
+    }
+  } catch (error) {
+    dashboardError.value = error.message || "数据看板加载失败";
+    throw error;
+  } finally {
+    dashboardLoading.value = false;
+  }
 }
 
 async function loadAppointments() {
