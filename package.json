@@ -30,6 +30,7 @@
     "db:studio": "npm run db:studio -w @anxin/server",
     "test": "npm run test:api",
     "test:api": "npm run test:api -w @anxin/server",
+    "audit:prod": "npm audit --omit=dev --audit-level=critical --registry=https://registry.npmjs.org",
     "verify": "npm run build && npm run test:api",
     "start:all": "powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1",
     "reset:db": "powershell -ExecutionPolicy Bypass -File scripts/reset-db.ps1"

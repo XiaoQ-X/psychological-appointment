@@ -21,7 +21,7 @@
         </div>
 
         <div class="login-form-wrap">
-          <form v-if="loginMode === 'login'" class="login-mode-card" @submit.prevent="login">
+          <form class="login-mode-card" @submit.prevent="login">
             <h2>学生登录</h2>
             <div v-if="error" class="prototype-error">
               <AlertCircle :size="16" />
@@ -30,16 +30,16 @@
             <input v-model="loginForm.studentNo" class="input-field" autocomplete="username" placeholder="请输入学号" type="text" />
             <input v-model="loginForm.password" class="input-field" autocomplete="current-password" placeholder="请输入密码" type="password" />
             <label class="prototype-checkline">
-              <input type="checkbox" checked />
+              <input v-model="policyAccepted" type="checkbox" />
               <span>我已阅读并同意<a @click.prevent="page = 'privacy'">《隐私政策》</a>和《服务协议》</span>
             </label>
             <button class="btn-main" :disabled="loading">
               <LogIn :size="18" />
-              登录
+              {{ loading ? '登录中...' : '登录' }}
             </button>
             <div class="login-links">
-              <button type="button" @click="loginMode = 'activate'">没有账号？激活账号</button>
-              <button type="button" @click="loginMode = 'activate'">首次使用？点击激活账号</button>
+              <span>账号由学校统一开通</span>
+              <small>首次登录或忘记密码请联系心理中心管理员</small>
             </div>
             <div class="emergency-login-link">
               <button type="button" @click="showNotice('紧急帮助入口已保留，登录后可进入完整页面')">
@@ -48,50 +48,6 @@
               </button>
             </div>
           </form>
-
-          <div v-else class="login-mode-card">
-            <h2>激活账号</h2>
-            <div v-if="notice" class="prototype-success">
-              <CheckCircle2 :size="22" />
-              <h3>激活成功！</h3>
-              <p>你的账号已激活，请返回登录</p>
-              <button type="button" @click="loginMode = 'login'">返回登录</button>
-            </div>
-            <template v-else>
-              <input class="input-field" placeholder="请输入姓名" type="text" />
-              <input class="input-field" placeholder="请输入学号" type="text" />
-              <select class="input-field">
-                <option value="">请选择院系</option>
-                <option>计算机学院</option>
-                <option>数学与统计学院</option>
-                <option>外国语学院</option>
-                <option>人文学院</option>
-                <option>经济管理学院</option>
-                <option>马克思主义学院</option>
-                <option>艺术与设计学院</option>
-                <option>物理与光电学院</option>
-              </select>
-              <select class="input-field">
-                <option value="">请选择年级</option>
-                <option>2021级</option>
-                <option>2022级</option>
-                <option>2023级</option>
-                <option>2024级</option>
-                <option>2025级</option>
-              </select>
-              <input class="input-field" placeholder="请输入手机号" type="tel" />
-              <input class="input-field" placeholder="请设置密码" type="password" />
-              <input class="input-field" placeholder="请确认密码" type="password" />
-              <label class="prototype-checkline">
-                <input type="checkbox" />
-                <span>我已阅读并同意<a @click.prevent="page = 'privacy'">《隐私政策》</a>和《服务协议》</span>
-              </label>
-              <button class="btn-main" type="button" @click="showNotice('账号激活流程已保留原型入口，后续接入批量账号导入后启用')">激活</button>
-              <div class="login-links">
-                <button type="button" @click="loginMode = 'login'">已有账号？返回登录</button>
-              </div>
-            </template>
-          </div>
         </div>
         <div class="login-bottom-spacer"></div>
       </div>
@@ -228,9 +184,6 @@
           </button>
         </nav>
 
-        <button class="prototype-switch" aria-label="切换咨询师端原型入口">
-          <ArrowLeftRight :size="22" />
-        </button>
       </section>
 
       <section v-if="page === 'announcement_detail'" class="student-prototype-page mobile-container">
@@ -1822,7 +1775,6 @@ const processLabels = { open: "待处理", following: "跟进中", handled: "已
 const me = ref(null);
 const page = ref("home");
 const previousPage = ref("home");
-const loginMode = ref("login");
 const loading = ref(false);
 const error = ref("");
 const notice = ref("");
@@ -1873,6 +1825,7 @@ const profileEdit = reactive({
 });
 
 const loginForm = reactive({ studentNo: "", password: "" });
+const policyAccepted = ref(false);
 const booking = reactive({
   scheduleId: "",
   type: "首次咨询",
@@ -2479,8 +2432,12 @@ async function guard(action) {
 }
 
 async function login() {
+  if (!policyAccepted.value) {
+    error.value = "请先阅读并同意隐私政策和服务协议";
+    return;
+  }
   await guard(async () => {
-    const data = await api.loginStudent(loginForm);
+    const data = await api.loginStudent({ ...loginForm, policyAccepted: true });
     me.value = data.user;
     booking.contactPhone = data.user?.phone || "";
     await loadAll();

@@ -287,6 +287,14 @@ label {
   background: #07c160;
 }
 
+.login-support {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+
 .btn-danger-outline {
   color: #ef4444;
   border: 1.5px solid #fecaca;

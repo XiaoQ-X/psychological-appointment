@@ -1,113 +1,126 @@
-# UI And Product Issue Register
+# UI 与产品问题清单
 
-Date: 2026-06-14
+审查日期：2026-06-14
 
-Severity:
+分级：
 
-- P0: blocks clean delivery, startup, or core demo.
-- P1: should be fixed before presenting as a polished product.
-- P2: quality, maintainability, or follow-up improvement.
+- P0：阻断启动、核心业务闭环或演示。
+- P1：成品交付前应修复。
+- P2：质量、体验或可维护性改进。
 
-## Cross-Project
-
-### P0
-
-- The original GitHub target is empty; source has only now been extracted locally and still needs commit/push.
-- The original project folder has many unrelated untracked and modified files. Treat it as a source archive, not a clean repository.
-- Root build script previously omitted student and counselor H5. This has been fixed in the extracted repository.
-- Docker used a fixed `container_name` and port `3307`, which conflicted with the original project. This has been fixed in the extracted repository by using compose-managed names and `3308`.
-
-### P1
-
-- `server/src/app.js` is a large single file with routing, business logic, validation, and persistence mixed together.
-- `apps/student/src/App.vue` and `apps/admin/src/App.vue` are very large single-file applications, making regression risk high.
-- `apps/wechat-miniapp/src/styles/prototype.css` is a large prototype-migration stylesheet with many override-style rules.
-- `npm audit` reports 30 vulnerabilities, including high-severity issues in `xlsx`, Vite/esbuild, and the uni-app dependency chain.
-- The seed creates a minimal empty baseline. README has been corrected, but product/demo planning still needs a stable demo-data strategy for non-technical reviewers.
-
-### P2
-
-- Some console/log output appears garbled in PowerShell because tooling is not consistently UTF-8 clean.
-- Documentation is now organized, but original Chinese docs should be reviewed after copying to ensure content is still current.
-- There is no CI workflow yet for install, build, API test, and audit.
-
-## Student H5
+## 跨项目
 
 ### P0
 
-- No P0 visual blocker found on login screenshot after using the correct target port.
+- 当前未发现启动、构建或核心 API 闭环阻断项。
 
 ### P1
 
-- The student H5 renders inside a fixed phone-shell frame. This is useful for prototype review but not appropriate for a production responsive H5 unless that is an explicit product decision.
-- The login page and H5 product language diverge from the WeChat miniapp branding, especially hero art, logo treatment, and entry hierarchy.
-- Agreement text and secondary actions are visually small relative to primary input and button controls.
+- API 测试每次会创建新的学生、咨询师和业务记录。连续测试可验证幂等性，但会污染长期演示库，应增加独立测试数据库或测试后清理。
+- 学生、咨询师和管理员入口文件仍然过大，页面级回归风险高。
+- H5 使用浏览器 `localStorage` 保存 JWT。正式上线前应迁移到更稳健的会话方案，并配合 CSP/XSS 防护。
+- 学生和咨询师初始密码仍来自身份证后六位，缺少首次登录强制改密。
 
 ### P2
 
-- The first screen has substantial unused lower whitespace after the login card on 390x844.
-- Emergency help is present but visually treated as a small secondary row; for mental-health scenarios it should be more reliably discoverable.
-- The design relies heavily on blue/teal and could benefit from a clearer semantic color system for risk, warning, success, and neutral states.
+- Windows PowerShell 的部分工具输出仍可能发生 UTF-8 显示乱码。
+- 多端缺少自动化端到端浏览器测试，当前截图验证仍由人工命令驱动。
 
-## Counselor H5
+## 学生端 H5
 
 ### P0
 
-- No P0 visual blocker found on login screenshot.
+- 无。
 
 ### P1
 
-- The consultant login page uses a generic medical icon and blue block header, while the miniapp/admin use LightCatch visual assets. This weakens cross-end brand consistency.
-- The WeChat scan login button is visually prominent but may not have a complete real authentication flow; verify before demo.
-- On 320px width, the card fits but vertical rhythm is tight, especially between header and card.
+- 固定手机壳布局适合原型展示，不是完整响应式 H5；桌面端会保留模拟设备边框。
+- 首页课程和部分推荐文案仍含静态展示内容，需明确数据来源或改为空状态。
+- 预约咨询师卡片在重复 API 测试后会出现同名测试咨询师，演示库需要隔离或重置。
 
 ### P2
 
-- Login form labels are clear, but helper text and failure/recovery states were not visible in screenshot audit.
-- Button icon/text alignment is acceptable but should be checked across all post-login workflows.
+- 登录页与小程序品牌视觉仍不一致。
+- 紧急帮助入口已显示，但未登录时仍只是说明提示，尚未直接进入完整应急信息页。
 
-## Admin
+### 本轮已修复
+
+- P1：协议勾选从静态 `checked` 改为真实状态，并随登录请求提交。
+- P1：移除不可用的账号激活原型和主页“切换咨询师端原型入口”悬浮按钮。
+- P1：登录期间显示禁用和“登录中”状态。
+- P2：扩大协议勾选控件并提高文字可读性。
+
+## 咨询师端 H5
 
 ### P0
 
-- No P0 visual blocker found on the login page at 1024x768 and 1440x900.
+- 无。
 
 ### P1
 
-- The login page background is illustrative and brand-heavy. For a school management backend, the product should lean more operational: clearer institutional identity, stronger security cues, and less decorative background dependency.
-- The admin app uses a desktop minimum width strategy. Confirm whether tablet/narrow desktop is officially unsupported; otherwise responsive behavior needs more work.
-- Admin business UI is concentrated in a very large `App.vue`, making page-level QA and modular fixes difficult.
+- 品牌视觉仍与小程序、管理员后台不完全一致。
+- 部分页面仍使用 `prototypeAppointments` 等迁移期命名，后续拆分时应统一为业务模型命名。
+- 风险记录、转介和文章流程仍需逐页完成移动端截图验收。
 
 ### P2
 
-- "Remember me" is checked by default; for a sensitive mental-health admin system this should be reconsidered.
-- The "forgot password" affordance exists, but password recovery policy is not documented in the UI audit.
+- 登录页仍为固定手机容器，不是完整响应式布局。
 
-## WeChat Miniapp
+### 本轮已修复
+
+- P1：移除未接入真实认证的“微信扫码登录”按钮，改为管理员支持说明。
+- P1：补充登录加载和禁用状态。
+
+## 管理员后台
 
 ### P0
 
-- No P0 login-screen rendering blocker found at 320x700 and 390x844.
+- 无。
 
 ### P1
 
-- Stale "replace with real data later" comments were removed from pages already wired to APIs. The remaining consent copy is intentionally built in and must be institutionally reviewed before production.
-- The 320px login screen shows the agreement checkbox and protocol links as too small for comfortable touch.
-- The hero image takes a large first-screen share; on small screens it compresses the login form and secondary actions.
-- "Counselor login" is treated like a small text link below the card, making role switching less discoverable.
-- The current uni-app alpha toolchain effectively fixes H5 development to port `5176`; parallel local project copies require releasing that port first.
+- “预约趋势”和“咨询类型分布”仍是静态概览图，不应被误认为实时统计。
+- 最小宽度策略主要面向桌面；1024px 以下不作为当前支持范围，需要在交付文档中明确。
+- 缺少首次登录强制改密、会话失效提醒和敏感操作二次确认策略。
 
 ### P2
 
-- The login page uses a strong image-led style, while counselor H5 uses a flatter blue style. Cross-end design tokens should be unified.
-- The emergency help entry is visible but could have stronger priority and touch target sizing.
-- Global status-bar and safe-area behavior should be tested on real WeChat DevTools and at least two phone sizes before release.
+- 登录页仍偏品牌插画风格，与高密度业务后台存在视觉差异。
+- 导航模块较多，后续应按账号权限裁剪可见菜单。
 
-## Next Fix Order
+### 本轮已修复
 
-1. Commit the clean extracted repository and push it to the empty GitHub target.
-2. Fix dependency audit risks or document accepted temporary exceptions.
-3. Reconcile seed/demo account expectations with README and API tests.
-4. Split backend and large Vue entry files by module.
-5. Run post-login screenshot audit for all core flows, not only login pages.
-6. Verify every miniapp page with real API data and remove stale prototype-restoration comments.
+- P1：默认不再勾选“记住我”。
+- P1：移除没有真实恢复流程的“忘记密码”链接，改为联系管理员说明。
+- P1：登录按钮增加加载和禁用状态。
+
+## 微信小程序
+
+### P0
+
+- 无。
+
+### P1
+
+- 仍需在微信开发者工具和真机验证状态栏、安全区、键盘顶起和授权行为。
+- uni-app alpha 构建链存在 9 个高危依赖审计项，直接修复需要整套升级和回归。
+- 首页右上角图标按钮在 H5 预览中较紧凑，需在 320px 真机视口继续确认边界。
+
+### P2
+
+- 登录页品牌与学生/咨询师 H5 尚未统一。
+- 空状态较完整，但部分图标仍来自位图资源，后续应统一图形语言。
+
+### 本轮已修复
+
+- P1：缩短登录 Hero 高度，缓解小屏首屏表单受压。
+- P1：协议行、勾选框、紧急帮助和角色切换入口扩大到接近 44px/88rpx 的触控尺寸。
+- P1：真实学生账号可通过 H5 预览登录并进入首页。
+
+## 下一轮顺序
+
+1. 建立独立测试数据库和自动清理机制，避免测试污染演示数据。
+2. 完成首次登录改密与密码策略。
+3. 将管理员静态图表替换为真实统计或明确移除。
+4. 对学生取消预约、咨询师处理、管理员管理流程补充自动化浏览器测试。
+5. 制定 uni-app/Vite 整体升级分支并进行兼容性验证。

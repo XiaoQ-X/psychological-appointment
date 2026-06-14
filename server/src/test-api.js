@@ -1,6 +1,6 @@
 const path = require("path");
 const dotenv = require("dotenv");
-const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 dotenv.config();
@@ -48,17 +48,17 @@ async function requestForm(baseUrl, apiPath, { token, formData } = {}) {
   return payload.data;
 }
 
-function workbookBlob(headers, rows) {
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Import");
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+async function workbookBlob(headers, rows) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Import");
+  worksheet.addRows([headers, ...rows]);
+  const buffer = await workbook.xlsx.writeBuffer();
   return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
-function formDataWithWorkbook(headers, rows, filename) {
+async function formDataWithWorkbook(headers, rows, filename) {
   const formData = new FormData();
-  formData.append("file", workbookBlob(headers, rows), filename);
+  formData.append("file", await workbookBlob(headers, rows), filename);
   return formData;
 }
 
@@ -80,6 +80,12 @@ async function main() {
   try {
     await request(baseUrl, "/health");
     checks.push("health");
+
+    const healthResponse = await fetch(`${baseUrl}/health`);
+    if (healthResponse.headers.has("x-powered-by") || healthResponse.headers.get("x-content-type-options") !== "nosniff") {
+      throw new Error("Security headers are not configured correctly.");
+    }
+    checks.push("security-headers");
 
     const adminLogin = await request(baseUrl, "/api/auth/admin/login", {
       method: "POST",
@@ -118,7 +124,7 @@ async function main() {
     const studentHeaders = ["学号", "姓名", "身份证后六位", "学院", "性别", "专业", "年级", "班级", "手机号", "校区", "状态"];
     const studentImport = await requestForm(baseUrl, "/api/admin/students/import", {
       token: adminLogin.token,
-      formData: formDataWithWorkbook(
+      formData: await formDataWithWorkbook(
         studentHeaders,
         [[importedStudentNo, "导入学生", "987654", "测试学院", "女", "心理学", "大一", "测试班", "13999990001", campus.name, "active"]],
         "students.xlsx"
@@ -131,7 +137,7 @@ async function main() {
     try {
       await requestForm(baseUrl, "/api/admin/students/import", {
         token: adminLogin.token,
-        formData: formDataWithWorkbook(
+        formData: await formDataWithWorkbook(
           studentHeaders,
           [[importedStudentNo, "重复学生", "111111", "测试学院", "女", "心理学", "大一", "测试班", "13999990002", campus.name, "active"]],
           "students-duplicate.xlsx"
@@ -151,7 +157,7 @@ async function main() {
     const counselorHeaders = ["工号", "姓名", "身份证后六位", "擅长领域", "简介", "性别", "职称", "手机号", "校区", "状态"];
     const counselorImport = await requestForm(baseUrl, "/api/admin/counselors/import", {
       token: adminLogin.token,
-      formData: formDataWithWorkbook(
+      formData: await formDataWithWorkbook(
         counselorHeaders,
         [[importedCounselorNo, "导入咨询师", "876543", "情绪调节、人际关系", "测试导入咨询师简介。", "男", "讲师", "13999991001", campus.name, "active"]],
         "counselors.xlsx"
@@ -164,7 +170,7 @@ async function main() {
     try {
       await requestForm(baseUrl, "/api/admin/counselors/import", {
         token: adminLogin.token,
-        formData: formDataWithWorkbook(
+        formData: await formDataWithWorkbook(
           counselorHeaders,
           [[importedCounselorNo, "重复咨询师", "222222", "情绪调节", "重复测试。", "男", "讲师", "13999991002", campus.name, "active"]],
           "counselors-duplicate.xlsx"
@@ -283,6 +289,43 @@ async function main() {
       body: { rating: 5, tags: ["自测"], content: "API自测评价" }
     });
     checks.push("student-feedback");
+
+    const cancelSchedule = await request(baseUrl, "/api/admin/schedules", {
+      method: "POST",
+      token: adminLogin.token,
+      body: {
+        counselorId: importedCounselor.id,
+        roomId: room.id,
+        startAt: futureIso(3, 14),
+        endAt: futureIso(3, 14, 50)
+      }
+    });
+    const cancellableAppointment = await request(baseUrl, "/api/student/appointments", {
+      method: "POST",
+      token: studentLogin.token,
+      body: {
+        scheduleId: cancelSchedule.id,
+        type: "常规咨询",
+        concern: "API自测取消预约",
+        consentAccepted: true
+      }
+    });
+    await request(baseUrl, `/api/student/appointments/${cancellableAppointment.id}/cancel`, {
+      method: "POST",
+      token: studentLogin.token,
+      body: { reason: "API自测主动取消" }
+    });
+    const cancelledAppointment = await request(baseUrl, `/api/student/appointments/${cancellableAppointment.id}`, {
+      token: studentLogin.token
+    });
+    const releasedSchedules = await request(baseUrl, "/api/student/schedules", { token: studentLogin.token });
+    if (
+      cancelledAppointment.status !== "cancelled" ||
+      !releasedSchedules.some((item) => item.id === cancelSchedule.id && item.status === "available")
+    ) {
+      throw new Error("Student cancellation did not release the future schedule.");
+    }
+    checks.push("student-cancel-appointment");
 
     const risk = await request(baseUrl, "/api/student/risk-assessments", {
       method: "POST",

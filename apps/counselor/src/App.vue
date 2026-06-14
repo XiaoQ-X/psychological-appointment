@@ -17,8 +17,8 @@
           <div v-if="error" class="error-card"><AlertCircle :size="16" />{{ error }}</div>
           <label>工号<input v-model="loginForm.jobNo" class="input-field" autocomplete="username" placeholder="请输入工号" /></label>
           <label>密码<input v-model="loginForm.password" class="input-field" type="password" autocomplete="current-password" placeholder="请输入密码" /></label>
-          <button class="btn-main" :disabled="loading"><LogIn :size="18" />登录</button>
-          <button type="button" class="btn-wechat"><MessageCircle :size="18" />微信扫码登录</button>
+          <button class="btn-main" :disabled="loading"><LogIn :size="18" />{{ loading ? '登录中...' : '登录' }}</button>
+          <p class="login-support">账号或密码问题请联系心理中心管理员</p>
         </form>
       </div>
     </section>

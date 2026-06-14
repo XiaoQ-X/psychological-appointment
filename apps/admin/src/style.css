@@ -200,16 +200,20 @@ input:focus, select:focus, textarea:focus {
   accent-color: var(--brand-primary);
 }
 
-.login-options a {
-  color: var(--brand-primary);
-  font-size: 14px;
-  text-decoration: none;
+.login-options > span {
+  color: #6b7280;
+  font-size: 13px;
 }
 
 .login-submit {
   width: 100%;
   height: 46px;
   border-radius: 8px;
+}
+
+.login-submit:disabled {
+  cursor: wait;
+  opacity: .65;
 }
 
 .login-footnote {

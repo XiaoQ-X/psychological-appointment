@@ -1,9 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
+const helmet = require("helmet");
+const { rateLimit } = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
-const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 const path = require("path");
 const fs = require("fs/promises");
 const { randomUUID } = require("crypto");
@@ -35,6 +37,12 @@ const corsOrigins = (process.env.CORS_ORIGIN || "")
   .map((item) => item.trim())
   .filter(Boolean);
 
+app.disable("x-powered-by");
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false
+}));
+
 function isLoopbackOrigin(origin) {
   try {
     const { hostname } = new URL(origin);
@@ -55,8 +63,19 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json({ limit: "2mb" }));
-app.use(morgan("dev"));
+app.use(morgan(isProduction ? "combined" : "dev"));
 app.use("/uploads", express.static(uploadRoot));
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler(req, res) {
+    return fail(res, 429, "登录尝试过于频繁，请稍后再试");
+  }
+});
 
 const allowedImportExtensions = new Set([".xlsx"]);
 const allowedImportMimeTypes = new Set([
@@ -540,31 +559,47 @@ function validateSystemFeedbackStatus(status) {
 const studentImportHeaders = ["学号", "姓名", "身份证后六位", "学院", "性别", "专业", "年级", "班级", "手机号", "校区", "状态"];
 const counselorImportHeaders = ["工号", "姓名", "身份证后六位", "擅长领域", "简介", "性别", "职称", "手机号", "校区", "状态"];
 
-function sendImportTemplate(res, sheetName, headers, sample) {
-  const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, sample]);
-  worksheet["!cols"] = headers.map(() => ({ wch: 16 }));
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+async function sendImportTemplate(res, sheetName, headers, sample) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(sheetName);
+  worksheet.addRow(headers);
+  worksheet.addRow(sample);
+  worksheet.columns = headers.map(() => ({ width: 18 }));
+  const buffer = await workbook.xlsx.writeBuffer();
   const filename = encodeURIComponent(`${sheetName}导入模板.xlsx`);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${filename}`);
-  return res.send(buffer);
+  return res.send(Buffer.from(buffer));
 }
 
-function readImportRows(file) {
+async function readImportRows(file) {
   if (!file) {
     const error = new Error("请上传Excel文件");
     error.status = 400;
     throw error;
   }
-  const workbook = XLSX.read(file.buffer, { type: "buffer", cellDates: false });
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!firstSheet) return [];
-  return XLSX.utils.sheet_to_json(firstSheet, { defval: "", raw: false }).map((row, index) => ({
-    rowNumber: index + 2,
-    row
-  })).filter(({ row }) => Object.values(row).some((value) => String(value).trim()));
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(file.buffer, {
+    ignoreNodes: ["dataValidations", "extLst", "picture"]
+  });
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+  if (worksheet.rowCount > 1001 || worksheet.columnCount > 50) {
+    const error = new Error("导入文件最多支持1000条数据和50列");
+    error.status = 400;
+    throw error;
+  }
+  const headers = worksheet.getRow(1).values.slice(1).map(cleanCell);
+  const rows = [];
+  worksheet.eachRow({ includeEmpty: false }, (excelRow, rowNumber) => {
+    if (rowNumber === 1) return;
+    const row = {};
+    headers.forEach((header, index) => {
+      if (header) row[header] = cleanCell(excelRow.getCell(index + 1).text);
+    });
+    if (Object.values(row).some((value) => value)) rows.push({ rowNumber, row });
+  });
+  return rows;
 }
 
 function cleanCell(value) {
@@ -807,7 +842,7 @@ async function loginWithPassword({ model, where, password, role }) {
   return { token, role, user: safeUser(user) };
 }
 
-app.post("/api/auth/student/login", asyncHandler(async (req, res) => {
+app.post("/api/auth/student/login", loginLimiter, asyncHandler(async (req, res) => {
   const studentNo = required(req.body.studentNo || req.body.account, "学号");
   const password = required(req.body.password, "密码");
   if (!req.body?.policyAccepted) {
@@ -821,14 +856,14 @@ app.post("/api/auth/student/login", asyncHandler(async (req, res) => {
   return success(res, data, "学生登录成功");
 }));
 
-app.post("/api/auth/counselor/login", asyncHandler(async (req, res) => {
+app.post("/api/auth/counselor/login", loginLimiter, asyncHandler(async (req, res) => {
   const jobNo = required(req.body.jobNo || req.body.account, "工号");
   const password = required(req.body.password, "密码");
   const data = await loginWithPassword({ model: "counselor", where: { jobNo }, password, role: "counselor" });
   return success(res, data, "咨询师登录成功");
 }));
 
-app.post("/api/auth/admin/login", asyncHandler(async (req, res) => {
+app.post("/api/auth/admin/login", loginLimiter, asyncHandler(async (req, res) => {
   const username = required(req.body.username || req.body.account, "用户名");
   const password = required(req.body.password, "密码");
   const data = await loginWithPassword({ model: "admin", where: { username }, password, role: "admin" });
@@ -1942,16 +1977,16 @@ app.get("/api/admin/dashboard", requireAuth(["admin"]), asyncHandler(async (req,
   return success(res, { students, counselors, appointments, pendingAppointments: pending, activeRisks: risks, activities });
 }));
 
-app.get("/api/admin/students/import-template", requireAuth(["admin"]), (req, res) => {
-  return sendImportTemplate(res, "学生账号", studentImportHeaders, ["学号必填", "姓名必填", "身份证后六位", "学院必填", "性别选填", "专业选填", "年级选填", "班级选填", "手机号选填", "校区选填", "active/disabled"]);
-});
+app.get("/api/admin/students/import-template", requireAuth(["admin"]), asyncHandler(async (req, res) => (
+  sendImportTemplate(res, "学生账号", studentImportHeaders, ["学号必填", "姓名必填", "身份证后六位", "学院必填", "性别选填", "专业选填", "年级选填", "班级选填", "手机号选填", "校区选填", "active/disabled"])
+)));
 
-app.get("/api/admin/counselors/import-template", requireAuth(["admin"]), (req, res) => {
-  return sendImportTemplate(res, "咨询师账号", counselorImportHeaders, ["工号必填", "姓名必填", "身份证后六位", "擅长领域必填", "简介必填", "性别选填", "职称选填", "手机号选填", "校区选填", "active/disabled"]);
-});
+app.get("/api/admin/counselors/import-template", requireAuth(["admin"]), asyncHandler(async (req, res) => (
+  sendImportTemplate(res, "咨询师账号", counselorImportHeaders, ["工号必填", "姓名必填", "身份证后六位", "擅长领域必填", "简介必填", "性别选填", "职称选填", "手机号选填", "校区选填", "active/disabled"])
+)));
 
 app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("file"), asyncHandler(async (req, res) => {
-  const rows = readImportRows(req.file);
+  const rows = await readImportRows(req.file);
   const errors = [];
   const campuses = await prisma.campus.findMany();
   const campusMap = indexCampuses(campuses);
@@ -2018,7 +2053,7 @@ app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("fi
 }));
 
 app.post("/api/admin/counselors/import", requireAuth(["admin"]), upload.single("file"), asyncHandler(async (req, res) => {
-  const rows = readImportRows(req.file);
+  const rows = await readImportRows(req.file);
   const errors = [];
   const campuses = await prisma.campus.findMany();
   const campusMap = indexCampuses(campuses);

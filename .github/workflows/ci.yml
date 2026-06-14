@@ -52,3 +52,5 @@ jobs:
       - run: npm run db:seed
       - run: npm run build
       - run: npm run test:api
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical --registry=https://registry.npmjs.org

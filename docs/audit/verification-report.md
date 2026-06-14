@@ -1,108 +1,83 @@
-# Verification Report
+# 验证报告
 
-Date: 2026-06-14
+日期：2026-06-14
 
-## Repository
+仓库：`https://github.com/XiaoQ-X/psychological-appointment`
 
-Target repository: `https://github.com/XiaoQ-X/psychological-appointment.git`
+## 环境
 
-The remote repository is still empty. This local repository has been rebuilt from `anxin-psychology-project/03_dev` as a clean source tree.
+- Node.js 20+
+- Docker Desktop 29.5.2
+- MySQL 8，宿主机端口 `3308`
+- Prisma Client 6.19.3
 
-## Source Extraction
+## 执行结果
 
-Included:
-
-- `apps/student`
-- `apps/counselor`
-- `apps/admin`
-- `apps/wechat-miniapp`
-- `server`
-- `packages`
-- `database`
-- `scripts`
-- `docker-compose.yml`
-- `.env.example`
-- selected Markdown documentation under `docs`
-
-Excluded from the source tree:
-
-- `node_modules`
-- `dist`
-- `output`
-- `.playwright-cli`
-- runtime uploads except `uploads/.gitkeep`
-- screenshots
-- delivery zip archives
-- historical deploy packages
-
-## Changes Made In This Repository
-
-- Rewrote `README.md` for a new developer startup flow.
-- Expanded `.gitignore` to cover dependencies, build output, automation output, uploads, logs, editor files, and archives.
-- Updated root `package.json` so `npm run build` covers student H5, counselor H5, admin, and WeChat miniapp.
-- Added `npm run test` and `npm run verify`.
-- Changed Docker MySQL from fixed container name to compose-managed service name.
-- Changed default MySQL host port from `3307` to `3308` to avoid conflicts with the original local project.
-- Updated scripts to use `docker compose exec -T mysql`.
-- Added `docs/` with API, database, delivery, and audit documents.
-- Updated API test schedule creation so repeated test runs use unique future dates and do not collide with earlier runs.
-- Added explicit `db:generate` because the Prisma schema is outside the default path and fresh CI environments do not have a generated client.
-
-## Commands Run
-
-```powershell
-npm install
-npm run build
-npm audit --omit=dev --registry=https://registry.npmjs.org --json
-docker compose up -d mysql
-docker compose exec -T mysql mysql -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS anxin_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-npm run db:migrate
-npm run db:seed
-npm run test:api
-```
-
-## Results
-
-| Check | Result | Notes |
+| 检查 | 结果 | 说明 |
 |---|---|---|
-| `npm install` | Pass | 746 packages installed. `phin` deprecation warning remains. |
-| `npm run build` | Pass | Student H5, counselor H5, admin, and WeChat miniapp all built. |
-| Docker MySQL | Pass after fix | Fixed container-name conflict and port conflict by removing `container_name` and using port `3308`. |
-| Prisma migrate | Pass | All migrations applied to MySQL on `localhost:3308`. |
-| Seed | Pass | Creates minimal empty business baseline plus admin/campus/room data. |
-| API test | Pass | 25 API checks passed, including import, login, schedule, appointment, completion, feedback, risk, and logs. |
-| npm audit | Fail | 30 vulnerabilities: 10 high, 20 moderate. Main sources: uni-app dependency chain, Vite/esbuild, `xlsx`. |
+| `npm install` | 通过 | 新增 ExcelJS、Helmet、express-rate-limit |
+| Docker MySQL | 通过 | 健康检查正常 |
+| `npm run db:generate` | 通过 | Prisma Client 已生成 |
+| `npm run db:migrate:deploy` | 通过 | 5 个迁移，无待执行迁移 |
+| `npm run db:seed` | 通过 | 2 个管理员、3 个校区、8 个咨询室 |
+| `npm run build` | 通过 | student、counselor、admin、wechat-miniapp 全部通过 |
+| `npm run test:api` 第一次 | 通过 | 27 项检查 |
+| `npm run test:api` 第二次 | 通过 | 重复执行仍通过 |
+| 浏览器登录 | 通过 | 学生、咨询师、管理员、小程序 H5 |
+| 截图检查 | 通过，有剩余 P1 | 390x844、320x700、1440x900 |
+| `npm audit --omit=dev` | 未清零 | 9 high、22 moderate |
 
-After the first successful API test, a repeated run exposed a non-idempotent test bug: the script reused a fixed schedule time and failed with a schedule conflict. `server/src/test-api.js` was updated to add a per-run future-date offset. A repeated `npm run test:api` now passes.
+CI 会执行生产依赖审计，并在出现 critical 漏洞时失败；当前 high/moderate 项仍必须按安全报告持续处置。
 
-## Security Audit Findings
+## API 覆盖
 
-High-level audit summary:
+本轮 API 测试覆盖：
 
-- 10 high vulnerabilities.
-- 20 moderate vulnerabilities.
-- `xlsx` has high vulnerabilities and no automatic npm audit fix.
-- uni-app alpha dependency chain pulls vulnerable transitive packages.
-- Vite/esbuild advisory is present in dependency graph; upgrade needs compatibility testing.
+- 安全响应头和 Express 指纹隐藏
+- 管理员登录、看板、校区和咨询室
+- 学生/咨询师模板下载和批量导入
+- 重复导入失败且不写入部分数据
+- 密码重置
+- 学生和咨询师登录
+- 创建排班
+- 学生查看排班和创建预约
+- 咨询师查看、确认、签到和完成预约
+- 学生查看状态和提交评价
+- 学生主动取消预约并释放未来排班
+- 风险评估
+- 管理员查看预约和操作日志
 
-Recommended next action:
+## 浏览器验证
 
-1. Replace `xlsx` or isolate import parsing behind strict server-side validation and sandboxing.
-2. Evaluate upgrading DCloud/uni-app packages from the alpha train.
-3. Upgrade Vite/esbuild only after checking uni-app compatibility.
-4. Add a CI audit job that runs against `https://registry.npmjs.org`.
+实际启动地址：
 
-## UI Screenshots Captured
+- API：`http://127.0.0.1:3000`
+- 学生端：`http://127.0.0.1:5273`，因为本机旧进程占用了 `127.0.0.1:5173`
+- 咨询师端：`http://127.0.0.1:5174`
+- 管理员端：`http://127.0.0.1:5175`
+- 小程序 H5：`http://127.0.0.1:5176`
 
-Screenshots were captured to ignored local output:
+截图只保存在被忽略的 `.playwright-cli`/`output` 临时目录，验证结束后删除，不提交仓库。
 
-- `output/playwright/ui-audit/student-login-390.png`
-- `output/playwright/ui-audit/student-login-320.png`
-- `output/playwright/ui-audit/counselor-login-390.png`
-- `output/playwright/ui-audit/counselor-login-320.png`
-- `output/playwright/ui-audit/admin-login-1440.png`
-- `output/playwright/ui-audit/admin-login-1024.png`
-- `output/playwright/ui-audit/miniapp-login-390.png`
-- `output/playwright/ui-audit/miniapp-login-320.png`
+## 安全审计变化
 
-These files are intentionally ignored and should not be committed.
+- 修改前：10 high、20 moderate，总计 30。
+- 修改后：9 high、22 moderate，总计 31。
+- 已消除：服务端直接依赖 `xlsx` 的两个高危 SheetJS 问题。
+- 新增中危：ExcelJS 的旧 `uuid` 传递依赖。当前使用路径不调用 UUID v3/v5/v6 的缓冲区接口，仍需跟踪上游修复。
+- 剩余高危均来自 uni-app/Vite 构建链，不在 Express 生产运行依赖路径中。
+
+详见 [security-review.md](security-review.md)。
+
+## 失败与处理
+
+1. `127.0.0.1:5173` 命中了旧项目页面。
+   - 原因：本机已有旧 Node 进程绑定 `127.0.0.1:5173`，本项目同时绑定 `0.0.0.0:5173`。
+   - 处理：不终止来源不明的进程，本轮学生端改用 `5273` 验证。
+2. 小程序第一次自动点击协议文本没有勾选复选框。
+   - 原因：点击命中了内部文本节点。
+   - 处理：改为点击 `.login-checkbox` 后登录，流程通过。
+
+## 结论
+
+项目当前可安装、可迁移、可构建、可重复执行 API 闭环，并能通过四端真实登录。尚不能视为生产就绪，主要差距是密码生命周期、测试数据隔离、静态管理图表、前端会话存储和 uni-app 构建链风险。

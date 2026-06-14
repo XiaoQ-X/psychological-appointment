@@ -70,6 +70,19 @@ npm run dev
 
 当前 uni-app alpha 工具链固定使用 `5176` 作为 H5 开发端口。并行运行多个项目副本前，请先释放该端口。
 
+如果页面内容与本项目不符，先检查是否有旧进程占用端口：
+
+```powershell
+Get-NetTCPConnection -LocalPort 5173,5174,5175,5176 -State Listen |
+  Select-Object LocalAddress,LocalPort,OwningProcess
+```
+
+不要直接终止来源不明的进程。可临时换端口验证，例如在 `apps/student` 下执行：
+
+```powershell
+npm exec vite -- --host 127.0.0.1 --port 5273
+```
+
 ## 常用命令
 
 ```powershell
@@ -82,6 +95,7 @@ npm run dev:miniapp:h5
 npm run build
 npm run db:generate
 npm run test:api
+npm run audit:prod
 npm run verify
 npm run reset:db
 ```
@@ -118,10 +132,14 @@ npm run reset:db
 - 环境与故障排查：[docs/delivery/environment-troubleshooting.md](docs/delivery/environment-troubleshooting.md)
 - 验收演示路径：[docs/delivery/acceptance-demo-paths.md](docs/delivery/acceptance-demo-paths.md)
 - 项目审查与下一步：[docs/audit/project-audit-and-next-steps.md](docs/audit/project-audit-and-next-steps.md)
+- UI 与产品问题：[docs/audit/ui-and-product-issue-register.md](docs/audit/ui-and-product-issue-register.md)
+- 验证报告：[docs/audit/verification-report.md](docs/audit/verification-report.md)
+- 安全审查：[docs/audit/security-review.md](docs/audit/security-review.md)
 
 ## 当前已知风险
 
-- 小程序仍有部分页面保留原型迁移痕迹，需要继续逐页验证真实数据闭环。
+- 学生/咨询师初始密码仍使用身份证后六位，尚未强制首次登录改密。
+- API 测试会向当前数据库写入测试数据，应尽快改为独立测试数据库。
+- 管理后台部分图表仍是静态概览。
 - 后端和部分前端入口文件体量较大，需要按模块拆分。
-- 管理后台、H5 和小程序的视觉语言仍需统一到成品级设计系统。
-- `npm audit` 需要使用 npm 官方 registry；`npmmirror` 不支持官方 audit 接口。
+- uni-app/Vite 构建链仍有高危依赖项，必须通过兼容性升级处理。

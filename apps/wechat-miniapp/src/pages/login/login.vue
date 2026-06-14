@@ -170,11 +170,11 @@ button {
 
 .login-blue-head {
   position: relative;
-  min-height: 428rpx;
+  min-height: 360rpx;
   display: grid;
   justify-items: center;
   align-content: start;
-  padding: 64rpx 40rpx 96rpx;
+  padding: 42rpx 40rpx 72rpx;
   color: #fff;
   background: linear-gradient(135deg, #4A90D9 0%, #357ABD 100%);
   text-align: center;
@@ -297,12 +297,15 @@ button {
 }
 
 .login-policy-line {
+  min-height: 88rpx;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8rpx;
   color: #6b7280;
-  font-size: 22rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  padding: 4rpx 0;
 }
 
 .login-policy-line .link {
@@ -312,8 +315,9 @@ button {
 
 .login-checkbox {
   position: relative;
-  width: 26rpx;
-  height: 26rpx;
+  width: 36rpx;
+  height: 36rpx;
+  flex: 0 0 36rpx;
   border: 1.5rpx solid #9ca3af;
   border-radius: 5rpx;
   background: #fff;
@@ -327,10 +331,10 @@ button {
 .login-checkbox.checked::after {
   content: "";
   position: absolute;
-  left: 8rpx;
-  top: 3rpx;
-  width: 7rpx;
-  height: 14rpx;
+  left: 11rpx;
+  top: 5rpx;
+  width: 9rpx;
+  height: 17rpx;
   border-right: 3rpx solid #fff;
   border-bottom: 3rpx solid #fff;
   transform: rotate(45deg);
@@ -420,7 +424,9 @@ button {
 .login-emergency-line {
   display: flex;
   justify-content: center;
-  padding-top: 24rpx;
+  min-height: 88rpx;
+  align-items: center;
+  padding-top: 12rpx;
   border-top: 1rpx solid #f3f4f6;
   color: #f97316;
   font-size: 26rpx;
@@ -436,9 +442,9 @@ button {
 }
 
 .login-secondary-entry button {
-  min-width: 0;
-  height: 40rpx;
-  line-height: 40rpx;
+  min-width: 240rpx;
+  min-height: 88rpx;
+  line-height: 88rpx;
   color: #4A90D9;
   background: transparent;
   font-size: 24rpx;

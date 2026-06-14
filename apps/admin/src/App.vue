@@ -27,10 +27,10 @@
 
       <div class="login-options">
         <label class="checkbox-line"><input v-model="loginForm.remember" type="checkbox" /> <span>记住我</span></label>
-        <a href="#" @click.prevent>忘记密码？</a>
+        <span>忘记密码请联系系统管理员</span>
       </div>
 
-      <button class="btn btn-primary login-submit" type="submit">登 录</button>
+      <button class="btn btn-primary login-submit" :disabled="loading" type="submit">{{ loading ? '登录中...' : '登 录' }}</button>
       <p class="login-footnote">仅供校内心理中心授权管理员使用</p>
     </form>
   </main>
@@ -1380,7 +1380,7 @@ const Timeline = {
 
 const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || "http://localhost:3000";
 const api = createApiClient({ storageKey: "anxin_admin_token" });
-const loginForm = reactive({ account: "", password: "", remember: true });
+const loginForm = reactive({ account: "", password: "", remember: false });
 const loginError = ref(false);
 const me = ref(false);
 const page = ref("dashboard");
