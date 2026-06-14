@@ -107,7 +107,7 @@ async function login() {
     const data = role.value === "counselor"
       ? await loginCounselor({ jobNo: account.value.trim(), password: password.value })
       : await loginStudent({ studentNo: account.value.trim(), password: password.value, policyAccepted: policyAccepted.value });
-    routeByRole(data.role);
+    routeByRole(data.role, data.mustChangePassword || data.user?.mustChangePassword);
   } catch (error) {
     toast(error.message || "登录失败");
   } finally {
@@ -120,13 +120,17 @@ async function restoreCurrentUser() {
   try {
     const data = await getCurrentUser();
     updateCurrentUser(data);
-    routeByRole(data.role);
+    routeByRole(data.role, data.mustChangePassword || data.user?.mustChangePassword);
   } catch (error) {
     // 401 会由统一 request 清理登录态并回到登录页。
   }
 }
 
-function routeByRole(nextRole) {
+function routeByRole(nextRole, mustChangePassword = false) {
+  if (mustChangePassword) {
+    uni.reLaunch({ url: "/pages/change-password/change-password" });
+    return;
+  }
   if (nextRole === "student") {
     uni.reLaunch({ url: "/pages/student/home" });
     return;

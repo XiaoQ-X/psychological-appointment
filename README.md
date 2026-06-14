@@ -46,7 +46,6 @@ cd C:\Users\JiaQ\Desktop\学校\psychological-appointment
 npm install
 copy .env.example .env
 docker compose up -d mysql
-docker compose exec -T mysql mysql -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS anxin_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 npm run db:migrate
 npm run db:seed
 npm run dev
@@ -100,7 +99,7 @@ npm run verify
 npm run reset:db
 ```
 
-`npm run build` 会构建学生端、咨询师端、管理员后台和微信小程序。`npm run test:api` 需要 MySQL 已启动，并且已经执行迁移和 seed。默认 MySQL 端口是 `3308`，可在 `.env` 中通过 `MYSQL_PORT`、`DATABASE_URL` 和 `SHADOW_DATABASE_URL` 修改。
+`npm run build` 会构建学生端、咨询师端、管理员后台和微信小程序。`npm run test:api` 只连接独立的 `anxin_test`，执行前自动重建、迁移并 seed，结束后自动清空测试数据；若连接目标不是 `anxin_test`，测试会直接拒绝运行。默认 MySQL 端口是 `3308`，可在 `.env` 中通过 `MYSQL_PORT`、`DATABASE_URL`、`TEST_DATABASE_URL` 和 `SHADOW_DATABASE_URL` 修改。
 
 ## 本地账号
 
@@ -109,15 +108,16 @@ npm run reset:db
 | 管理员后台 | `admin` | `123456` |
 | 管理员后台 | `supervisor` | `123456` |
 
-当前 seed 使用“空业务基线”，只创建管理员、校区、咨询室和系统配置，不创建固定学生或咨询师账号。学生和咨询师账号可通过管理员后台批量导入，`npm run test:api` 也会在测试过程中动态导入学生和咨询师账号。
+当前 seed 使用“空业务基线”，只创建管理员、校区、咨询室和系统配置，不创建固定学生或咨询师账号。学生和咨询师账号可通过管理员后台新增或批量导入。系统会生成一次性随机临时密码，管理员必须通过安全渠道分别交付；学生和咨询师首次登录后必须修改密码，完成前所有业务接口均不可访问。
 
-这些账号只用于本地演示和测试。生产环境必须删除默认账号或强制首次登录改密。
+管理员默认账号只用于本地演示和测试。生产环境必须删除默认账号或更换强密码。
 
 ## 安全说明
 
 `.env.example` 使用 Docker Compose 本地默认值，便于新开发者启动项目。生产部署前必须替换：
 
 - `DATABASE_URL`
+- `TEST_DATABASE_URL`
 - `SHADOW_DATABASE_URL`
 - `JWT_SECRET`
 - `CORS_ORIGIN`
@@ -138,8 +138,7 @@ npm run reset:db
 
 ## 当前已知风险
 
-- 学生/咨询师初始密码仍使用身份证后六位，尚未强制首次登录改密。
-- API 测试会向当前数据库写入测试数据，应尽快改为独立测试数据库。
 - 管理后台部分图表仍是静态概览。
+- 浏览器端 JWT 仍存储在 `localStorage`，尚未具备服务端会话撤销机制。
 - 后端和部分前端入口文件体量较大，需要按模块拆分。
 - uni-app/Vite 构建链仍有高危依赖项，必须通过兼容性升级处理。

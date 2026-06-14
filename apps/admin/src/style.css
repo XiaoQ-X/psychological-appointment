@@ -223,6 +223,31 @@ input:focus, select:focus, textarea:focus {
   font-size: 12px;
 }
 
+.credential-modal {
+  max-width: 520px;
+}
+
+.temporary-credentials {
+  display: grid;
+  gap: 10px;
+}
+
+.temporary-credentials p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.temporary-credentials code {
+  display: block;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+  border: 1px solid #dbe5f0;
+  border-radius: 6px;
+  color: #172033;
+  background: #f8fafc;
+}
+
 .admin-shell {
   min-height: 100vh;
   display: flex;

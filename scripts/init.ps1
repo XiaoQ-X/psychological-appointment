@@ -17,7 +17,7 @@ do {
   Start-Sleep -Seconds 3
 } while ((Get-Date) -lt $deadline)
 
-docker compose exec -T mysql mysql -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS anxin_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+docker compose exec -T mysql mysql -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS anxin_shadow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE IF NOT EXISTS anxin_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON anxin_test.* TO 'anxin'@'%'; FLUSH PRIVILEGES;"
 
 npm run db:migrate
 npm run db:seed

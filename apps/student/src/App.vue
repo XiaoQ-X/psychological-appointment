@@ -54,6 +54,36 @@
       <p v-if="error" class="toast error">{{ error }}</p>
     </section>
 
+    <section v-else-if="mustChangePassword" class="student-login-prototype mobile-container">
+      <div class="status-bar">
+        <span>09:41</span>
+        <div class="status-icons"><Signal :size="12" /><Wifi :size="12" /><BatteryFull :size="13" /></div>
+      </div>
+      <div class="content-area login-prototype-content password-change-content">
+        <div class="login-brand primary-gradient">
+          <div class="login-brand-icon"><ShieldCheck :size="32" /></div>
+          <h1>首次登录安全设置</h1>
+          <p>请先设置新的登录密码</p>
+          <small>完成修改后才能进入预约服务</small>
+        </div>
+        <div class="login-form-wrap">
+          <form class="login-mode-card password-change-card" @submit.prevent="changePassword">
+            <h2>修改密码</h2>
+            <div v-if="error" class="prototype-error"><AlertCircle :size="16" /><span>{{ error }}</span></div>
+            <input v-model="passwordForm.oldPassword" class="input-field" autocomplete="current-password" placeholder="请输入临时密码" type="password" />
+            <input v-model="passwordForm.newPassword" class="input-field" autocomplete="new-password" placeholder="至少8位，包含字母和特殊字符" type="password" />
+            <input v-model="passwordForm.confirmPassword" class="input-field" autocomplete="new-password" placeholder="再次输入新密码" type="password" />
+            <p class="password-policy">新密码不能为纯数字、常见弱密码或与临时密码相同。</p>
+            <button class="btn-main" :disabled="loading">
+              <ShieldCheck :size="18" />
+              {{ loading ? '修改中...' : '完成修改并进入' }}
+            </button>
+            <button class="password-logout" type="button" :disabled="loading" @click="logout">退出当前账号</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <section v-else class="app-frame">
       <header v-if="showTopbar" class="mini-navbar">
         <button class="nav-icon" @click="goBack"><ChevronLeft :size="21" /></button>
@@ -1773,6 +1803,7 @@ const riskLabels = { low: "低风险", medium: "中风险", high: "高风险", c
 const processLabels = { open: "待处理", following: "跟进中", handled: "已处理", closed: "已结案" };
 
 const me = ref(null);
+const mustChangePassword = ref(false);
 const page = ref("home");
 const previousPage = ref("home");
 const loading = ref(false);
@@ -1825,6 +1856,7 @@ const profileEdit = reactive({
 });
 
 const loginForm = reactive({ studentNo: "", password: "" });
+const passwordForm = reactive({ oldPassword: "", newPassword: "", confirmPassword: "" });
 const policyAccepted = ref(false);
 const booking = reactive({
   scheduleId: "",
@@ -2439,15 +2471,42 @@ async function login() {
   await guard(async () => {
     const data = await api.loginStudent({ ...loginForm, policyAccepted: true });
     me.value = data.user;
+    mustChangePassword.value = Boolean(data.mustChangePassword || data.user?.mustChangePassword);
     booking.contactPhone = data.user?.phone || "";
+    if (!mustChangePassword.value) {
+      await loadAll();
+      page.value = "home";
+    }
+  });
+}
+
+async function changePassword() {
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    error.value = "两次输入的新密码不一致";
+    return;
+  }
+  await guard(async () => {
+    const data = await api.request("/api/auth/change-password", {
+      method: "POST",
+      body: {
+        oldPassword: passwordForm.oldPassword,
+        newPassword: passwordForm.newPassword
+      }
+    });
+    me.value = data.user;
+    mustChangePassword.value = false;
+    Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });
     await loadAll();
     page.value = "home";
+    showNotice("密码修改成功");
   });
 }
 
 function logout() {
   api.logout();
   me.value = null;
+  mustChangePassword.value = false;
+  Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });
   page.value = "home";
 }
 
@@ -2724,8 +2783,9 @@ onMounted(async () => {
   await guard(async () => {
     const data = await api.request("/api/auth/me");
     me.value = data.user;
+    mustChangePassword.value = Boolean(data.mustChangePassword || data.user?.mustChangePassword);
     booking.contactPhone = data.user?.phone || "";
-    await loadAll();
+    if (!mustChangePassword.value) await loadAll();
   });
 });
 </script>

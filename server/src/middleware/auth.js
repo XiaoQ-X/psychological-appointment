@@ -47,7 +47,7 @@ function stripSecret(value) {
   }, {});
 }
 
-function requireAuth(roles = []) {
+function requireAuth(roles = [], options = {}) {
   return async (req, res, next) => {
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -62,6 +62,13 @@ function requireAuth(roles = []) {
       const profile = await loadProfile(payload.role, payload.id);
       if (!profile || profile.status === "disabled") {
         return fail(res, 401, "登录状态已失效");
+      }
+      if (
+        profile.mustChangePassword &&
+        ["student", "counselor"].includes(payload.role) &&
+        !options.allowPasswordChange
+      ) {
+        return fail(res, 403, "首次登录必须先修改密码", { code: "PASSWORD_CHANGE_REQUIRED" });
       }
       req.user = { id: payload.id, role: payload.role, profile };
       next();

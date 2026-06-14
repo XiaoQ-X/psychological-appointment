@@ -71,6 +71,7 @@ model Student {
   gender            String?
   idCardLast6       String             @map("id_card_last6")
   passwordHash      String             @map("password_hash")
+  mustChangePassword Boolean           @default(true) @map("must_change_password")
   college           String
   major             String?
   grade             String?
@@ -103,6 +104,7 @@ model Counselor {
   gender               String?
   idCardLast6          String             @default("123456") @map("id_card_last6")
   passwordHash         String             @map("password_hash")
+  mustChangePassword   Boolean            @default(true) @map("must_change_password")
   title                String?
   phone                String?
   avatar               String?

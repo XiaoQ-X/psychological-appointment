@@ -190,6 +190,11 @@
                 第{{ item.rowNumber }}行 · {{ item.field }}：{{ item.message }}
               </li>
             </ul>
+            <div v-if="importState.credentials.length" class="temporary-credentials">
+              <p>以下临时密码仅显示一次，请通过安全渠道分别交付，并提醒用户首次登录立即修改。</p>
+              <code v-for="item in importState.credentials" :key="item.account">{{ item.account }} · {{ item.name }} · {{ item.temporaryPassword }}</code>
+              <button class="btn btn-light" type="button" @click="copyTemporaryCredentials(importState.credentials)">复制临时凭据</button>
+            </div>
           </section>
 
           <AdminTable :columns="studentColumns" :rows="students">
@@ -271,6 +276,11 @@
                 第{{ item.rowNumber }}行 · {{ item.field }}：{{ item.message }}
               </li>
             </ul>
+            <div v-if="importState.credentials.length" class="temporary-credentials">
+              <p>以下临时密码仅显示一次，请通过安全渠道分别交付，并提醒用户首次登录立即修改。</p>
+              <code v-for="item in importState.credentials" :key="item.account">{{ item.account }} · {{ item.name }} · {{ item.temporaryPassword }}</code>
+              <button class="btn btn-light" type="button" @click="copyTemporaryCredentials(importState.credentials)">复制临时凭据</button>
+            </div>
           </section>
 
           <div class="counselor-grid">
@@ -848,7 +858,7 @@
           <div v-if="accountFormKind === 'students'" class="form-grid two">
             <label><span>学号 <em>*</em></span><input v-model="accountForm.studentNo" :disabled="accountFormMode === 'edit'" placeholder="请输入学号" type="text" /></label>
             <label><span>姓名 <em>*</em></span><input v-model="accountForm.name" placeholder="请输入姓名" type="text" /></label>
-            <label v-if="accountFormMode === 'add'"><span>身份证后六位</span><input v-model="accountForm.idCardLast6" maxlength="6" placeholder="请输入6位数字" type="text" /></label>
+            <label v-if="accountFormMode === 'add'"><span>身份核验码</span><input v-model="accountForm.idCardLast6" maxlength="6" placeholder="请输入6位数字" type="text" /></label>
             <label><span>性别</span><select v-model="accountForm.gender"><option value="">未填写</option><option>男</option><option>女</option></select></label>
             <label><span>学院 <em>*</em></span><input v-model="accountForm.college" placeholder="请输入学院" type="text" /></label>
             <label><span>专业</span><input v-model="accountForm.major" placeholder="请输入专业" type="text" /></label>
@@ -862,7 +872,7 @@
           <div v-else class="form-grid two">
             <label><span>工号 <em>*</em></span><input v-model="accountForm.jobNo" :disabled="accountFormMode === 'edit'" placeholder="请输入工号" type="text" /></label>
             <label><span>姓名 <em>*</em></span><input v-model="accountForm.name" placeholder="请输入姓名" type="text" /></label>
-            <label v-if="accountFormMode === 'add'"><span>身份证后六位</span><input v-model="accountForm.idCardLast6" maxlength="6" placeholder="请输入6位数字" type="text" /></label>
+            <label v-if="accountFormMode === 'add'"><span>身份核验码</span><input v-model="accountForm.idCardLast6" maxlength="6" placeholder="请输入6位数字" type="text" /></label>
             <label><span>性别</span><select v-model="accountForm.gender"><option value="">未填写</option><option>男</option><option>女</option></select></label>
             <label><span>职称</span><input v-model="accountForm.title" placeholder="请输入职称" type="text" /></label>
             <label><span>手机号</span><input v-model="accountForm.phone" placeholder="请输入手机号" type="tel" /></label>
@@ -875,6 +885,23 @@
         <footer class="form-modal-foot">
           <button class="btn btn-light" type="button" :disabled="actionBusy" @click="closeAccountForm">取消</button>
           <button class="btn btn-primary" type="button" :disabled="actionBusy" @click="saveAccountForm">{{ actionBusy ? '保存中...' : '保存' }}</button>
+        </footer>
+      </section>
+    </div>
+
+    <div v-if="credentialState.open" class="modal-mask" @click.self="closeCredentialState">
+      <section class="form-modal credential-modal">
+        <header class="form-modal-head">
+          <h2>临时登录凭据</h2>
+          <button type="button" @click="closeCredentialState">×</button>
+        </header>
+        <div class="form-modal-body temporary-credentials">
+          <p>临时密码仅在此处显示一次。请通过安全渠道交付，并提醒用户首次登录立即修改。</p>
+          <code>{{ credentialState.account }} · {{ credentialState.temporaryPassword }}</code>
+        </div>
+        <footer class="form-modal-foot">
+          <button class="btn btn-light" type="button" @click="copyTemporaryCredentials([credentialState])">复制</button>
+          <button class="btn btn-primary" type="button" @click="closeCredentialState">我已记录</button>
         </footer>
       </section>
     </div>
@@ -1400,7 +1427,8 @@ const selectedAssessment = ref(null);
 const modal = reactive({ open: false, title: "", message: "", confirmText: "确认", danger: false, success: false, textarea: false, textValue: "", icon: "", onConfirm: null });
 const studentImportInput = ref(null);
 const counselorImportInput = ref(null);
-const importState = reactive({ open: false, kind: "", title: "", summary: "", errors: [] });
+const importState = reactive({ open: false, kind: "", title: "", summary: "", errors: [], credentials: [] });
+const credentialState = reactive({ open: false, account: "", name: "", temporaryPassword: "" });
 const studentFilters = reactive({ keyword: "", status: "" });
 const counselorFilters = reactive({ keyword: "", status: "" });
 const appointmentFilters = reactive({ keyword: "", status: "", type: "" });
@@ -2739,6 +2767,7 @@ async function handleImportFile(event, kind) {
       importState.title = "导入失败";
       importState.summary = payload.message || "导入校验失败，未写入任何数据";
       importState.errors = payload.error?.errors || [];
+      importState.credentials = [];
       return;
     }
     importState.open = true;
@@ -2746,6 +2775,7 @@ async function handleImportFile(event, kind) {
     importState.title = "导入成功";
     importState.summary = `成功导入 ${payload.data?.imported || 0} 个账号`;
     importState.errors = [];
+    importState.credentials = payload.data?.credentials || [];
     if (kind === "students") await loadStudents();
     if (kind === "counselors") await loadCounselors();
     await loadDashboard();
@@ -2756,6 +2786,7 @@ async function handleImportFile(event, kind) {
     importState.title = "导入失败";
     importState.summary = error.message || "文件上传失败";
     importState.errors = [];
+    importState.credentials = [];
   } finally {
     actionBusy.value = false;
   }
@@ -2899,7 +2930,7 @@ async function saveAccountForm() {
     return;
   }
   if (accountFormMode.value === "add" && !/^\d{6}$/.test(accountForm.idCardLast6.trim())) {
-    showNotice("璇峰～鍐?浣嶆暟瀛楃殑韬唤璇佸悗鍏綅");
+    showNotice("请填写6位数字身份核验码");
     return;
   }
   if (kind === "students" && !accountForm.college.trim()) {
@@ -2914,12 +2945,16 @@ async function saveAccountForm() {
   try {
     const method = accountFormMode.value === "edit" ? "PUT" : "POST";
     const path = accountFormMode.value === "edit" ? `/api/admin/${kind}/${accountForm.id}` : `/api/admin/${kind}`;
-    await adminRequest(path, { method, body: accountRequestBody() }, `${label}保存失败`);
+    const result = await adminRequest(path, { method, body: accountRequestBody() }, `${label}保存失败`);
     accountFormOpen.value = false;
     if (kind === "students") await loadStudents();
     if (kind === "counselors") await loadCounselors();
     await loadDashboard();
-    showNotice(`${label}信息已保存`);
+    if (accountFormMode.value === "add" && result?.temporaryPassword) {
+      showTemporaryCredential(identity.trim(), accountForm.name.trim(), result.temporaryPassword);
+    } else {
+      showNotice(`${label}信息已保存`);
+    }
   } catch (error) {
     // handleAdminError has already surfaced the failure.
   } finally {
@@ -3681,17 +3716,47 @@ function confirmResetPassword(kind, row) {
   openModal(
     "reset-password",
     "重置密码",
-    `确认将${label}「${row.name}」的密码重置为身份证后六位？`,
+    `确认重置${label}「${row.name}」的密码？系统将生成一次性随机临时密码。`,
     {
       confirmText: "确认重置",
       onConfirm: async () => {
-        await adminRequest(`/api/admin/${kind}/${row.id}/reset-password`, { method: "POST" }, "重置密码失败");
+        const result = await adminRequest(`/api/admin/${kind}/${row.id}/reset-password`, { method: "POST" }, "重置密码失败");
         if (kind === "students") await loadStudents();
         if (kind === "counselors") await loadCounselors();
-        showNotice("密码已重置为身份证后六位");
+        showTemporaryCredential(row.studentNo || row.jobNo, row.name, result.temporaryPassword);
       }
     }
   );
+}
+
+function showTemporaryCredential(account, name, temporaryPassword) {
+  Object.assign(credentialState, {
+    open: true,
+    account,
+    name,
+    temporaryPassword
+  });
+}
+
+function closeCredentialState() {
+  Object.assign(credentialState, {
+    open: false,
+    account: "",
+    name: "",
+    temporaryPassword: ""
+  });
+}
+
+async function copyTemporaryCredentials(credentials) {
+  const text = credentials
+    .map((item) => `${item.account}\t${item.name || ""}\t${item.temporaryPassword}`)
+    .join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    showNotice("临时凭据已复制，请安全保管");
+  } catch {
+    showNotice("复制失败，请手动记录临时凭据");
+  }
 }
 
 function toggleAccountStatus(kind, row) {

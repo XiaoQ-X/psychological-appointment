@@ -27,6 +27,7 @@ Content-Type: application/json
 | `POST` | `/api/auth/counselor/login` | 公开 | 咨询师登录，参数：`jobNo`、`password` |
 | `POST` | `/api/auth/admin/login` | 公开 | 管理员登录，参数：`username`、`password` |
 | `GET` | `/api/auth/me` | 登录 | 返回当前用户资料 |
+| `POST` | `/api/auth/change-password` | 学生/咨询师 | 参数：`oldPassword`、`newPassword`；首次登录可访问 |
 | `POST` | `/api/auth/logout` | 登录 | 退出登录 |
 
 登录返回示例：
@@ -38,10 +39,13 @@ Content-Type: application/json
   "data": {
     "token": "jwt-token",
     "role": "student",
+    "mustChangePassword": true,
     "user": { "id": "xxx", "studentNo": "202600000001", "name": "测试学生01" }
   }
 }
 ```
+
+学生和咨询师由管理员新增、导入或重置密码后会获得随机临时密码。`mustChangePassword=true` 时，除 `/api/auth/me`、`/api/auth/change-password` 和 `/api/auth/logout` 外，业务接口统一返回 `403`。新密码至少 8 位，不能为纯数字、常见弱密码或与旧密码相同，并要求包含字母和特殊字符。
 
 ## 学生端
 
@@ -122,14 +126,16 @@ Content-Type: application/json
 | `GET` | `/api/admin/dashboard` | 数据看板 |
 | `GET` | `/api/admin/students` | 学生列表 |
 | `GET` | `/api/admin/students/:id` | 学生详情 |
-| `POST` | `/api/admin/students` | 新增学生 |
+| `POST` | `/api/admin/students` | 新增学生，返回一次性 `temporaryPassword` |
 | `PUT` | `/api/admin/students/:id` | 编辑学生 |
 | `DELETE` | `/api/admin/students/:id` | 删除学生（软删除） |
+| `POST` | `/api/admin/students/:id/reset-password` | 生成新的随机临时密码 |
 | `GET` | `/api/admin/counselors` | 咨询师列表 |
 | `GET` | `/api/admin/counselors/:id` | 咨询师详情 |
-| `POST` | `/api/admin/counselors` | 新增咨询师 |
+| `POST` | `/api/admin/counselors` | 新增咨询师，返回一次性 `temporaryPassword` |
 | `PUT` | `/api/admin/counselors/:id` | 编辑咨询师 |
 | `POST` | `/api/admin/counselors/:id/disable` | 禁用咨询师 |
+| `POST` | `/api/admin/counselors/:id/reset-password` | 生成新的随机临时密码 |
 | `GET` | `/api/admin/appointments` | 全量预约 |
 | `GET` | `/api/admin/schedules` | 全量排班 |
 | `POST` | `/api/admin/schedules` | 新增排班 |
@@ -165,3 +171,4 @@ Content-Type: application/json
 - 咨询师接口只能访问当前咨询师相关预约、排班、学生档案和消息；高风险记录面向咨询师提供提醒列表。
 - 管理员接口可访问全局管理数据。
 - 所有新增、修改、删除和关键状态变更都会写入 `operation_logs`。
+- 身份核验码、密码哈希和临时密码不会写入操作日志；身份核验码和密码哈希不会出现在用户资料响应中。

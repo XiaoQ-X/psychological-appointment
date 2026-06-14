@@ -4775,3 +4775,27 @@ select.input-field {
   font-size: 10px;
   font-weight: 500;
 }
+
+.password-change-content {
+  padding-bottom: 36px;
+}
+
+.password-change-card {
+  display: grid;
+  gap: 12px;
+}
+
+.password-policy {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.password-logout {
+  min-height: 44px;
+  border: 0;
+  color: #64748b;
+  background: transparent;
+  font-weight: 700;
+}

@@ -12,6 +12,7 @@ const { randomUUID } = require("crypto");
 const prisma = require("./db");
 const { success, fail, asyncHandler } = require("./utils/response");
 const { requireAuth, signToken, stripSecret } = require("./middleware/auth");
+const { generateTemporaryPassword, passwordPolicyError } = require("./utils/password");
 const {
   ACTIVE_APPOINTMENT_STATUSES,
   toDate,
@@ -556,8 +557,8 @@ function validateSystemFeedbackStatus(status) {
   return value;
 }
 
-const studentImportHeaders = ["学号", "姓名", "身份证后六位", "学院", "性别", "专业", "年级", "班级", "手机号", "校区", "状态"];
-const counselorImportHeaders = ["工号", "姓名", "身份证后六位", "擅长领域", "简介", "性别", "职称", "手机号", "校区", "状态"];
+const studentImportHeaders = ["学号", "姓名", "身份核验码", "学院", "性别", "专业", "年级", "班级", "手机号", "校区", "状态"];
+const counselorImportHeaders = ["工号", "姓名", "身份核验码", "擅长领域", "简介", "性别", "职称", "手机号", "校区", "状态"];
 
 async function sendImportTemplate(res, sheetName, headers, sample) {
   const workbook = new ExcelJS.Workbook();
@@ -839,7 +840,12 @@ async function loginWithPassword({ model, where, password, role }) {
     throw error;
   }
   const token = signToken({ id: user.id, role });
-  return { token, role, user: safeUser(user) };
+  return {
+    token,
+    role,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    user: safeUser(user)
+  };
 }
 
 app.post("/api/auth/student/login", loginLimiter, asyncHandler(async (req, res) => {
@@ -870,11 +876,47 @@ app.post("/api/auth/admin/login", loginLimiter, asyncHandler(async (req, res) =>
   return success(res, data, "管理员登录成功");
 }));
 
-app.get("/api/auth/me", requireAuth(["student", "counselor", "admin"]), (req, res) => {
-  return success(res, { role: req.user.role, user: safeUser(req.user.profile) });
+app.get("/api/auth/me", requireAuth(["student", "counselor", "admin"], { allowPasswordChange: true }), (req, res) => {
+  return success(res, {
+    role: req.user.role,
+    mustChangePassword: Boolean(req.user.profile.mustChangePassword),
+    user: safeUser(req.user.profile)
+  });
 });
 
-app.post("/api/auth/logout", requireAuth(["student", "counselor", "admin"]), (req, res) => {
+app.post("/api/auth/change-password", requireAuth(["student", "counselor"], { allowPasswordChange: true }), asyncHandler(async (req, res) => {
+  const oldPassword = required(req.body.oldPassword, "旧密码");
+  const newPassword = required(req.body.newPassword, "新密码");
+  const policyError = passwordPolicyError(newPassword);
+  if (policyError) return fail(res, 400, policyError);
+  if (oldPassword === newPassword) return fail(res, 400, "新密码不能与旧密码相同");
+
+  const model = req.user.role;
+  const user = await prisma[model].findUnique({ where: { id: req.user.id } });
+  if (!user || !(await bcrypt.compare(oldPassword, user.passwordHash))) {
+    return fail(res, 400, "旧密码错误");
+  }
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    return fail(res, 400, "新密码不能与旧密码相同");
+  }
+
+  const updated = await prisma[model].update({
+    where: { id: user.id },
+    data: {
+      passwordHash: await bcrypt.hash(newPassword, 12),
+      mustChangePassword: false
+    },
+    include: { campus: true }
+  });
+  await logOperation(req, `${req.user.role}:change-password`, `${req.user.role}s`, user.id, {});
+  return success(res, {
+    role: req.user.role,
+    mustChangePassword: false,
+    user: safeUser(updated)
+  }, "密码修改成功");
+}));
+
+app.post("/api/auth/logout", requireAuth(["student", "counselor", "admin"], { allowPasswordChange: true }), (req, res) => {
   return success(res, {}, "已退出登录");
 });
 
@@ -1978,11 +2020,11 @@ app.get("/api/admin/dashboard", requireAuth(["admin"]), asyncHandler(async (req,
 }));
 
 app.get("/api/admin/students/import-template", requireAuth(["admin"]), asyncHandler(async (req, res) => (
-  sendImportTemplate(res, "学生账号", studentImportHeaders, ["学号必填", "姓名必填", "身份证后六位", "学院必填", "性别选填", "专业选填", "年级选填", "班级选填", "手机号选填", "校区选填", "active/disabled"])
+  sendImportTemplate(res, "学生账号", studentImportHeaders, ["学号必填", "姓名必填", "6位身份核验码", "学院必填", "性别选填", "专业选填", "年级选填", "班级选填", "手机号选填", "校区选填", "active/disabled"])
 )));
 
 app.get("/api/admin/counselors/import-template", requireAuth(["admin"]), asyncHandler(async (req, res) => (
-  sendImportTemplate(res, "咨询师账号", counselorImportHeaders, ["工号必填", "姓名必填", "身份证后六位", "擅长领域必填", "简介必填", "性别选填", "职称选填", "手机号选填", "校区选填", "active/disabled"])
+  sendImportTemplate(res, "咨询师账号", counselorImportHeaders, ["工号必填", "姓名必填", "6位身份核验码", "擅长领域必填", "简介必填", "性别选填", "职称选填", "手机号选填", "校区选填", "active/disabled"])
 )));
 
 app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("file"), asyncHandler(async (req, res) => {
@@ -1997,7 +2039,7 @@ app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("fi
       rowNumber,
       studentNo: cleanCell(row["学号"]),
       name: cleanCell(row["姓名"]),
-      idCardLast6: cleanCell(row["身份证后六位"]),
+      idCardLast6: cleanCell(row["身份核验码"] || row["身份证后六位"]),
       college: cleanCell(row["学院"]),
       gender: cleanCell(row["性别"]),
       major: cleanCell(row["专业"]),
@@ -2009,7 +2051,7 @@ app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("fi
     };
     if (!item.studentNo) addImportError(errors, rowNumber, "学号", "学号不能为空");
     if (!item.name) addImportError(errors, rowNumber, "姓名", "姓名不能为空");
-    if (!validateLast6(item.idCardLast6)) addImportError(errors, rowNumber, "身份证后六位", "身份证后六位必须为6位数字");
+    if (!validateLast6(item.idCardLast6)) addImportError(errors, rowNumber, "身份核验码", "身份核验码必须为6位数字");
     if (!item.college) addImportError(errors, rowNumber, "学院", "学院不能为空");
     if (item.campusName && !campusMap.has(item.campusName)) addImportError(errors, rowNumber, "校区", "校区必须匹配系统已有校区");
     if (item.studentNo) {
@@ -2029,13 +2071,15 @@ app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("fi
   const result = await prisma.$transaction(async (tx) => {
     const created = [];
     for (const item of normalized) {
-      created.push(await tx.student.create({
+      const temporaryPassword = generateTemporaryPassword();
+      const student = await tx.student.create({
         data: {
           studentNo: item.studentNo,
           name: item.name,
           gender: item.gender,
           idCardLast6: item.idCardLast6,
-          passwordHash: await bcrypt.hash(item.idCardLast6, 10),
+          passwordHash: await bcrypt.hash(temporaryPassword, 12),
+          mustChangePassword: true,
           college: item.college,
           major: item.major,
           grade: item.grade,
@@ -2044,12 +2088,22 @@ app.post("/api/admin/students/import", requireAuth(["admin"]), upload.single("fi
           campusId: item.campusName ? campusMap.get(item.campusName) : null,
           status: item.status
         }
-      }));
+      });
+      created.push({ student, temporaryPassword });
     }
     return created;
   });
   const log = await logOperation(req, "student:import", "students", null, { count: result.length });
-  return success(res, { imported: result.length, successRows: result.length, operationLogId: log.id }, "学生账号导入成功");
+  return success(res, {
+    imported: result.length,
+    successRows: result.length,
+    operationLogId: log.id,
+    credentials: result.map(({ student, temporaryPassword }) => ({
+      account: student.studentNo,
+      name: student.name,
+      temporaryPassword
+    }))
+  }, "学生账号导入成功");
 }));
 
 app.post("/api/admin/counselors/import", requireAuth(["admin"]), upload.single("file"), asyncHandler(async (req, res) => {
@@ -2064,7 +2118,7 @@ app.post("/api/admin/counselors/import", requireAuth(["admin"]), upload.single("
       rowNumber,
       jobNo: cleanCell(row["工号"]),
       name: cleanCell(row["姓名"]),
-      idCardLast6: cleanCell(row["身份证后六位"]),
+      idCardLast6: cleanCell(row["身份核验码"] || row["身份证后六位"]),
       specialties: parseSpecialties(row["擅长领域"]),
       introduction: cleanCell(row["简介"]),
       gender: cleanCell(row["性别"]),
@@ -2075,7 +2129,7 @@ app.post("/api/admin/counselors/import", requireAuth(["admin"]), upload.single("
     };
     if (!item.jobNo) addImportError(errors, rowNumber, "工号", "工号不能为空");
     if (!item.name) addImportError(errors, rowNumber, "姓名", "姓名不能为空");
-    if (!validateLast6(item.idCardLast6)) addImportError(errors, rowNumber, "身份证后六位", "身份证后六位必须为6位数字");
+    if (!validateLast6(item.idCardLast6)) addImportError(errors, rowNumber, "身份核验码", "身份核验码必须为6位数字");
     if (!item.specialties.length) addImportError(errors, rowNumber, "擅长领域", "擅长领域不能为空");
     if (!item.introduction) addImportError(errors, rowNumber, "简介", "简介不能为空");
     if (item.campusName && !campusMap.has(item.campusName)) addImportError(errors, rowNumber, "校区", "校区必须匹配系统已有校区");
@@ -2096,13 +2150,15 @@ app.post("/api/admin/counselors/import", requireAuth(["admin"]), upload.single("
   const result = await prisma.$transaction(async (tx) => {
     const created = [];
     for (const item of normalized) {
-      created.push(await tx.counselor.create({
+      const temporaryPassword = generateTemporaryPassword();
+      const counselor = await tx.counselor.create({
         data: {
           jobNo: item.jobNo,
           name: item.name,
           gender: item.gender,
           idCardLast6: item.idCardLast6,
-          passwordHash: await bcrypt.hash(item.idCardLast6, 10),
+          passwordHash: await bcrypt.hash(temporaryPassword, 12),
+          mustChangePassword: true,
           title: item.title || "心理咨询师",
           phone: item.phone,
           campusId: item.campusName ? campusMap.get(item.campusName) : null,
@@ -2110,12 +2166,22 @@ app.post("/api/admin/counselors/import", requireAuth(["admin"]), upload.single("
           introduction: item.introduction,
           status: item.status
         }
-      }));
+      });
+      created.push({ counselor, temporaryPassword });
     }
     return created;
   });
   const log = await logOperation(req, "counselor:import", "counselors", null, { count: result.length });
-  return success(res, { imported: result.length, successRows: result.length, operationLogId: log.id }, "咨询师账号导入成功");
+  return success(res, {
+    imported: result.length,
+    successRows: result.length,
+    operationLogId: log.id,
+    credentials: result.map(({ counselor, temporaryPassword }) => ({
+      account: counselor.jobNo,
+      name: counselor.name,
+      temporaryPassword
+    }))
+  }, "咨询师账号导入成功");
 }));
 
 app.get("/api/admin/students", requireAuth(["admin"]), asyncHandler(async (req, res) => {
@@ -2143,8 +2209,9 @@ app.get("/api/admin/students/:id", requireAuth(["admin"]), asyncHandler(async (r
 
 app.post("/api/admin/students", requireAuth(["admin"]), asyncHandler(async (req, res) => {
   const idCardLast6 = cleanCell(req.body.idCardLast6);
-  if (!validateLast6(idCardLast6)) return fail(res, 400, "身份证后六位必须为6位数字");
-  const passwordHash = await bcrypt.hash(idCardLast6, 10);
+  if (!validateLast6(idCardLast6)) return fail(res, 400, "身份核验码必须为6位数字");
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await bcrypt.hash(temporaryPassword, 12);
   const student = await prisma.student.create({
     data: {
       studentNo: required(req.body.studentNo, "学号"),
@@ -2152,6 +2219,7 @@ app.post("/api/admin/students", requireAuth(["admin"]), asyncHandler(async (req,
       gender: req.body.gender || "",
       idCardLast6,
       passwordHash,
+      mustChangePassword: true,
       college: req.body.college || "未设置学院",
       major: req.body.major || "",
       grade: req.body.grade || "",
@@ -2162,7 +2230,7 @@ app.post("/api/admin/students", requireAuth(["admin"]), asyncHandler(async (req,
     }
   });
   await logOperation(req, "student:create", "students", student.id, {});
-  return success(res, safeUser(student), "学生已新增");
+  return success(res, { user: safeUser(student), temporaryPassword }, "学生已新增");
 }));
 
 app.put("/api/admin/students/:id", requireAuth(["admin"]), asyncHandler(async (req, res) => {
@@ -2193,12 +2261,16 @@ app.delete("/api/admin/students/:id", requireAuth(["admin"]), asyncHandler(async
 app.post("/api/admin/students/:id/reset-password", requireAuth(["admin"]), asyncHandler(async (req, res) => {
   const existing = await prisma.student.findUnique({ where: { id: req.params.id } });
   if (!existing || existing.status === "deleted") return fail(res, 404, "学生不存在");
+  const temporaryPassword = generateTemporaryPassword();
   const student = await prisma.student.update({
     where: { id: existing.id },
-    data: { passwordHash: await bcrypt.hash(existing.idCardLast6, 10) }
+    data: {
+      passwordHash: await bcrypt.hash(temporaryPassword, 12),
+      mustChangePassword: true
+    }
   });
   await logOperation(req, "student:reset-password", "students", student.id, {});
-  return success(res, safeUser(student), "学生密码已重置为身份证后六位");
+  return success(res, { user: safeUser(student), temporaryPassword }, "学生密码已重置");
 }));
 
 app.get("/api/admin/counselors", requireAuth(["admin"]), asyncHandler(async (req, res) => {
@@ -2227,8 +2299,9 @@ app.get("/api/admin/counselors/:id", requireAuth(["admin"]), asyncHandler(async 
 
 app.post("/api/admin/counselors", requireAuth(["admin"]), asyncHandler(async (req, res) => {
   const idCardLast6 = cleanCell(req.body.idCardLast6);
-  if (!validateLast6(idCardLast6)) return fail(res, 400, "身份证后六位必须为6位数字");
-  const passwordHash = await bcrypt.hash(idCardLast6, 10);
+  if (!validateLast6(idCardLast6)) return fail(res, 400, "身份核验码必须为6位数字");
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await bcrypt.hash(temporaryPassword, 12);
   const counselor = await prisma.counselor.create({
     data: {
       jobNo: required(req.body.jobNo, "工号"),
@@ -2236,6 +2309,7 @@ app.post("/api/admin/counselors", requireAuth(["admin"]), asyncHandler(async (re
       gender: req.body.gender || "",
       idCardLast6,
       passwordHash,
+      mustChangePassword: true,
       title: req.body.title || "心理咨询师",
       phone: req.body.phone || "",
       campusId: req.body.campusId || null,
@@ -2244,7 +2318,7 @@ app.post("/api/admin/counselors", requireAuth(["admin"]), asyncHandler(async (re
     }
   });
   await logOperation(req, "counselor:create", "counselors", counselor.id, {});
-  return success(res, safeUser(counselor), "咨询师已新增");
+  return success(res, { user: safeUser(counselor), temporaryPassword }, "咨询师已新增");
 }));
 
 app.put("/api/admin/counselors/:id", requireAuth(["admin"]), asyncHandler(async (req, res) => {
@@ -2274,12 +2348,16 @@ app.post("/api/admin/counselors/:id/disable", requireAuth(["admin"]), asyncHandl
 app.post("/api/admin/counselors/:id/reset-password", requireAuth(["admin"]), asyncHandler(async (req, res) => {
   const existing = await prisma.counselor.findUnique({ where: { id: req.params.id } });
   if (!existing || existing.status === "deleted") return fail(res, 404, "咨询师不存在");
+  const temporaryPassword = generateTemporaryPassword();
   const counselor = await prisma.counselor.update({
     where: { id: existing.id },
-    data: { passwordHash: await bcrypt.hash(existing.idCardLast6, 10) }
+    data: {
+      passwordHash: await bcrypt.hash(temporaryPassword, 12),
+      mustChangePassword: true
+    }
   });
   await logOperation(req, "counselor:reset-password", "counselors", counselor.id, {});
-  return success(res, safeUser(counselor), "咨询师密码已重置为身份证后六位");
+  return success(res, { user: safeUser(counselor), temporaryPassword }, "咨询师密码已重置");
 }));
 
 app.get("/api/admin/appointments", requireAuth(["admin"]), asyncHandler(async (req, res) => {

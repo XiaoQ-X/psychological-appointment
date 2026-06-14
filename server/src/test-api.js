@@ -48,6 +48,18 @@ async function requestForm(baseUrl, apiPath, { token, formData } = {}) {
   return payload.data;
 }
 
+async function expectRequestFailure(baseUrl, apiPath, options, expectedMessage) {
+  try {
+    await request(baseUrl, apiPath, options);
+  } catch (error) {
+    if (expectedMessage && !String(error.message).includes(expectedMessage)) {
+      throw new Error(`Expected "${expectedMessage}" from ${apiPath}, got "${error.message}"`);
+    }
+    return error.payload;
+  }
+  throw new Error(`${options.method || "GET"} ${apiPath} should have failed.`);
+}
+
 async function workbookBlob(headers, rows) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Import");
@@ -72,6 +84,10 @@ function futureIso(days, hour, minute = 0) {
 }
 
 async function main() {
+  const databaseName = new URL(process.env.DATABASE_URL || "").pathname.replace(/^\//, "");
+  if (databaseName !== "anxin_test") {
+    throw new Error("API tests refuse to run outside the dedicated anxin_test database.");
+  }
   const server = await listen();
   const port = server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -121,7 +137,7 @@ async function main() {
 
     const unique = Date.now();
     const importedStudentNo = `TST${unique}`;
-    const studentHeaders = ["学号", "姓名", "身份证后六位", "学院", "性别", "专业", "年级", "班级", "手机号", "校区", "状态"];
+    const studentHeaders = ["学号", "姓名", "身份核验码", "学院", "性别", "专业", "年级", "班级", "手机号", "校区", "状态"];
     const studentImport = await requestForm(baseUrl, "/api/admin/students/import", {
       token: adminLogin.token,
       formData: await formDataWithWorkbook(
@@ -131,6 +147,10 @@ async function main() {
       )
     });
     if (studentImport.imported !== 1) throw new Error("Student import did not create exactly one account.");
+    const importedStudentPassword = studentImport.credentials?.[0]?.temporaryPassword;
+    if (!importedStudentPassword || importedStudentPassword === "987654") {
+      throw new Error("Student import did not return a random temporary password.");
+    }
     checks.push("admin-student-import");
 
     let duplicateStudentFailed = false;
@@ -154,7 +174,7 @@ async function main() {
     checks.push("admin-student-import-duplicate-fails");
 
     const importedCounselorNo = `CT${unique}`;
-    const counselorHeaders = ["工号", "姓名", "身份证后六位", "擅长领域", "简介", "性别", "职称", "手机号", "校区", "状态"];
+    const counselorHeaders = ["工号", "姓名", "身份核验码", "擅长领域", "简介", "性别", "职称", "手机号", "校区", "状态"];
     const counselorImport = await requestForm(baseUrl, "/api/admin/counselors/import", {
       token: adminLogin.token,
       formData: await formDataWithWorkbook(
@@ -164,6 +184,10 @@ async function main() {
       )
     });
     if (counselorImport.imported !== 1) throw new Error("Counselor import did not create exactly one account.");
+    const importedCounselorPassword = counselorImport.credentials?.[0]?.temporaryPassword;
+    if (!importedCounselorPassword || importedCounselorPassword === "876543") {
+      throw new Error("Counselor import did not return a random temporary password.");
+    }
     checks.push("admin-counselor-import");
 
     let duplicateCounselorFailed = false;
@@ -189,24 +213,116 @@ async function main() {
     const importedStudent = studentAfterDuplicate.find((item) => item.studentNo === importedStudentNo);
     const importedCounselor = counselorAfterDuplicate.find((item) => item.jobNo === importedCounselorNo);
     if (!importedStudent || !importedCounselor) throw new Error("Imported accounts are not visible in admin lists.");
+    if ("idCardLast6" in importedStudent || "idCardLast6" in importedCounselor) {
+      throw new Error("Admin account responses must not expose identity-card suffixes.");
+    }
 
-    await request(baseUrl, `/api/admin/students/${importedStudent.id}/reset-password`, { method: "POST", token: adminLogin.token });
-    await request(baseUrl, `/api/admin/counselors/${importedCounselor.id}/reset-password`, { method: "POST", token: adminLogin.token });
+    const studentReset = await request(baseUrl, `/api/admin/students/${importedStudent.id}/reset-password`, { method: "POST", token: adminLogin.token });
+    const counselorReset = await request(baseUrl, `/api/admin/counselors/${importedCounselor.id}/reset-password`, { method: "POST", token: adminLogin.token });
+    const studentTemporaryPassword = studentReset.temporaryPassword;
+    const counselorTemporaryPassword = counselorReset.temporaryPassword;
+    if (
+      !studentTemporaryPassword ||
+      !counselorTemporaryPassword ||
+      studentTemporaryPassword === importedStudentPassword ||
+      counselorTemporaryPassword === importedCounselorPassword
+    ) {
+      throw new Error("Password reset must issue a new random temporary password.");
+    }
     checks.push("admin-reset-passwords");
 
     const studentLogin = await request(baseUrl, "/api/auth/student/login", {
       method: "POST",
-      body: { studentNo: importedStudentNo, password: "987654", policyAccepted: true }
+      body: { studentNo: importedStudentNo, password: studentTemporaryPassword, policyAccepted: true }
     });
-    if (!studentLogin.token) throw new Error("Imported student cannot login with id card last 6.");
-    checks.push("imported-student-login");
+    if (!studentLogin.token || !studentLogin.mustChangePassword) {
+      throw new Error("Imported student must be forced to change the temporary password.");
+    }
+    checks.push("student-first-login-requires-password-change");
 
     const counselorLogin = await request(baseUrl, "/api/auth/counselor/login", {
       method: "POST",
-      body: { jobNo: importedCounselorNo, password: "876543" }
+      body: { jobNo: importedCounselorNo, password: counselorTemporaryPassword }
     });
-    if (!counselorLogin.token) throw new Error("Imported counselor cannot login with id card last 6.");
-    checks.push("imported-counselor-login");
+    if (!counselorLogin.token || !counselorLogin.mustChangePassword) {
+      throw new Error("Imported counselor must be forced to change the temporary password.");
+    }
+    checks.push("counselor-first-login-requires-password-change");
+
+    await expectRequestFailure(baseUrl, "/api/student/schedules", {
+      token: studentLogin.token
+    }, "首次登录必须先修改密码");
+    checks.push("student-business-blocked-before-password-change");
+
+    await expectRequestFailure(baseUrl, "/api/auth/change-password", {
+      method: "POST",
+      token: studentLogin.token,
+      body: { oldPassword: "Wrong!Password9", newPassword: "Student!Secure9" }
+    }, "旧密码错误");
+    checks.push("student-old-password-rejected");
+
+    await expectRequestFailure(baseUrl, "/api/auth/change-password", {
+      method: "POST",
+      token: studentLogin.token,
+      body: { oldPassword: studentTemporaryPassword, newPassword: "12345678" }
+    }, "不能为纯数字");
+    checks.push("student-numeric-password-rejected");
+
+    await expectRequestFailure(baseUrl, "/api/auth/change-password", {
+      method: "POST",
+      token: studentLogin.token,
+      body: { oldPassword: studentTemporaryPassword, newPassword: "password123" }
+    }, "过于简单");
+    checks.push("student-weak-password-rejected");
+
+    await expectRequestFailure(baseUrl, "/api/auth/change-password", {
+      method: "POST",
+      token: studentLogin.token,
+      body: { oldPassword: studentTemporaryPassword, newPassword: studentTemporaryPassword }
+    }, "不能与旧密码相同");
+    checks.push("student-same-password-rejected");
+
+    const uniqueSuffix = String(unique).slice(-6);
+    const studentNewPassword = `Student!${uniqueSuffix}`;
+    const counselorNewPassword = `Counselor!${uniqueSuffix}`;
+    const studentPasswordChange = await request(baseUrl, "/api/auth/change-password", {
+      method: "POST",
+      token: studentLogin.token,
+      body: { oldPassword: studentTemporaryPassword, newPassword: studentNewPassword }
+    });
+    const counselorPasswordChange = await request(baseUrl, "/api/auth/change-password", {
+      method: "POST",
+      token: counselorLogin.token,
+      body: { oldPassword: counselorTemporaryPassword, newPassword: counselorNewPassword }
+    });
+    if (
+      studentPasswordChange.mustChangePassword ||
+      studentPasswordChange.user?.mustChangePassword ||
+      counselorPasswordChange.mustChangePassword ||
+      counselorPasswordChange.user?.mustChangePassword
+    ) {
+      throw new Error("Password-change flags were not cleared.");
+    }
+    checks.push("student-and-counselor-password-change");
+
+    await expectRequestFailure(baseUrl, "/api/auth/student/login", {
+      method: "POST",
+      body: { studentNo: importedStudentNo, password: studentTemporaryPassword, policyAccepted: true }
+    }, "账号或密码错误");
+    checks.push("temporary-password-invalidated");
+
+    const studentRelogin = await request(baseUrl, "/api/auth/student/login", {
+      method: "POST",
+      body: { studentNo: importedStudentNo, password: studentNewPassword, policyAccepted: true }
+    });
+    const counselorRelogin = await request(baseUrl, "/api/auth/counselor/login", {
+      method: "POST",
+      body: { jobNo: importedCounselorNo, password: counselorNewPassword }
+    });
+    if (studentRelogin.mustChangePassword || counselorRelogin.mustChangePassword) {
+      throw new Error("Password-change state returned after successful re-login.");
+    }
+    checks.push("password-change-relogin");
 
     const schedule = await request(baseUrl, "/api/admin/schedules", {
       method: "POST",
@@ -220,14 +336,14 @@ async function main() {
     });
     checks.push("admin-create-schedule");
 
-    const schedules = await request(baseUrl, "/api/student/schedules", { token: studentLogin.token });
+    const schedules = await request(baseUrl, "/api/student/schedules", { token: studentRelogin.token });
     const availableSchedule = schedules.find((item) => item.id === schedule.id);
     if (!availableSchedule) throw new Error("Imported student cannot see newly created counselor schedule.");
     checks.push("student-schedules");
 
     const recommendation = await request(baseUrl, "/api/student/recommendations", {
       method: "POST",
-      token: studentLogin.token,
+      token: studentRelogin.token,
       body: {
         answers: [
           { group: "咨询诉求", selected: ["情绪压力"] },
@@ -241,7 +357,7 @@ async function main() {
     }
     checks.push("student-recommendation-create");
 
-    const latestRecommendation = await request(baseUrl, "/api/student/recommendations/latest", { token: studentLogin.token });
+    const latestRecommendation = await request(baseUrl, "/api/student/recommendations/latest", { token: studentRelogin.token });
     if (!latestRecommendation || latestRecommendation.id !== recommendation.id) {
       throw new Error("Latest recommendation result is not the newly created record.");
     }
@@ -249,7 +365,7 @@ async function main() {
 
     const created = await request(baseUrl, "/api/student/appointments", {
       method: "POST",
-      token: studentLogin.token,
+      token: studentRelogin.token,
       body: {
         scheduleId: availableSchedule.id,
         type: "首次咨询",
@@ -259,17 +375,17 @@ async function main() {
     });
     checks.push("student-create-appointment");
 
-    const counselorAppointments = await request(baseUrl, "/api/counselor/appointments", { token: counselorLogin.token });
+    const counselorAppointments = await request(baseUrl, "/api/counselor/appointments", { token: counselorRelogin.token });
     if (!counselorAppointments.some((item) => item.id === created.id)) {
       throw new Error("Counselor cannot see newly created appointment.");
     }
     checks.push("counselor-see-appointment");
 
-    await request(baseUrl, `/api/counselor/appointments/${created.id}/confirm`, { method: "POST", token: counselorLogin.token });
-    await request(baseUrl, `/api/counselor/appointments/${created.id}/checkin`, { method: "POST", token: counselorLogin.token });
+    await request(baseUrl, `/api/counselor/appointments/${created.id}/confirm`, { method: "POST", token: counselorRelogin.token });
+    await request(baseUrl, `/api/counselor/appointments/${created.id}/checkin`, { method: "POST", token: counselorRelogin.token });
     await request(baseUrl, `/api/counselor/appointments/${created.id}/complete`, {
       method: "POST",
-      token: counselorLogin.token,
+      token: counselorRelogin.token,
       body: {
         summary: "API自测完成咨询记录",
         intervention: "支持性倾听",
@@ -279,13 +395,13 @@ async function main() {
     });
     checks.push("counselor-complete-appointment");
 
-    const updated = await request(baseUrl, `/api/student/appointments/${created.id}`, { token: studentLogin.token });
+    const updated = await request(baseUrl, `/api/student/appointments/${created.id}`, { token: studentRelogin.token });
     if (updated.status !== "completed") throw new Error(`Expected completed, got ${updated.status}`);
     checks.push("student-status-sync");
 
     await request(baseUrl, `/api/student/appointments/${created.id}/feedback`, {
       method: "POST",
-      token: studentLogin.token,
+      token: studentRelogin.token,
       body: { rating: 5, tags: ["自测"], content: "API自测评价" }
     });
     checks.push("student-feedback");
@@ -302,7 +418,7 @@ async function main() {
     });
     const cancellableAppointment = await request(baseUrl, "/api/student/appointments", {
       method: "POST",
-      token: studentLogin.token,
+      token: studentRelogin.token,
       body: {
         scheduleId: cancelSchedule.id,
         type: "常规咨询",
@@ -312,13 +428,13 @@ async function main() {
     });
     await request(baseUrl, `/api/student/appointments/${cancellableAppointment.id}/cancel`, {
       method: "POST",
-      token: studentLogin.token,
+      token: studentRelogin.token,
       body: { reason: "API自测主动取消" }
     });
     const cancelledAppointment = await request(baseUrl, `/api/student/appointments/${cancellableAppointment.id}`, {
-      token: studentLogin.token
+      token: studentRelogin.token
     });
-    const releasedSchedules = await request(baseUrl, "/api/student/schedules", { token: studentLogin.token });
+    const releasedSchedules = await request(baseUrl, "/api/student/schedules", { token: studentRelogin.token });
     if (
       cancelledAppointment.status !== "cancelled" ||
       !releasedSchedules.some((item) => item.id === cancelSchedule.id && item.status === "available")
@@ -329,7 +445,7 @@ async function main() {
 
     const risk = await request(baseUrl, "/api/student/risk-assessments", {
       method: "POST",
-      token: studentLogin.token,
+      token: studentRelogin.token,
       body: { score: 18, answers: [{ question: 1, value: 3 }] }
     });
     if (risk.level !== "high") throw new Error(`Expected high risk, got ${risk.level}`);

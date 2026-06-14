@@ -12,6 +12,10 @@ export function getCurrentUser() {
   return request("/api/auth/me");
 }
 
+export function changePassword(data) {
+  return request("/api/auth/change-password", { method: "POST", data });
+}
+
 export function logoutLocal() {
   clearSession();
 }

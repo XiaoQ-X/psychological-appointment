@@ -1,6 +1,7 @@
-import { clearSession, getRole, getToken } from "../api/client";
+import { clearSession, getRole, getToken, getUser } from "../api/client";
 
 const LOGIN_URL = "/pages/login/login";
+const CHANGE_PASSWORD_URL = "/pages/change-password/change-password";
 const PUBLIC_PAGES = new Set([
   LOGIN_URL,
   "/pages/student/emergency"
@@ -79,11 +80,9 @@ export function checkPageAccess(url, options = {}) {
   const path = normalizeUrl(url || getCurrentPageUrl());
   if (!path || isPublicPage(path)) return true;
 
-  const requiredRole = getRequiredRole(path);
-  if (!requiredRole) return true;
-
   const token = getToken();
   const role = getRole();
+  const user = getUser();
 
   if (!token || !role) {
     clearSession();
@@ -91,6 +90,36 @@ export function checkPageAccess(url, options = {}) {
     redirectToLogin();
     return false;
   }
+
+  if (path === CHANGE_PASSWORD_URL) {
+    if (!["student", "counselor"].includes(role)) {
+      clearSession();
+      redirectToLogin();
+      return false;
+    }
+    if (!user?.mustChangePassword) {
+      redirectToRoleHome(role);
+      return false;
+    }
+    return true;
+  }
+
+  if (user?.mustChangePassword) {
+    if (redirecting) return false;
+    redirecting = true;
+    uni.reLaunch({
+      url: CHANGE_PASSWORD_URL,
+      complete() {
+        setTimeout(() => {
+          redirecting = false;
+        }, 120);
+      }
+    });
+    return false;
+  }
+
+  const requiredRole = getRequiredRole(path);
+  if (!requiredRole) return true;
 
   if (role !== requiredRole) {
     if (role !== "student" && role !== "counselor") {

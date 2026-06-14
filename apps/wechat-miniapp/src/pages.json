@@ -7,6 +7,12 @@
       }
     },
     {
+      "path": "pages/change-password/change-password",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/student/home",
       "style": {
         "navigationStyle": "custom"

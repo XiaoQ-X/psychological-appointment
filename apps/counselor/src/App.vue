@@ -23,6 +23,31 @@
       </div>
     </section>
 
+    <section v-else-if="mustChangePassword" class="counselor-mobile mobile-container">
+      <div class="status-bar">
+        <span>09:41</span>
+        <div class="status-icons"><Signal :size="12" /><Wifi :size="12" /><BatteryFull :size="13" /></div>
+      </div>
+      <div class="content-area login-content password-change-content">
+        <section class="login-hero primary-gradient">
+          <div class="login-logo"><ShieldCheck :size="34" /></div>
+          <h1>首次登录安全设置</h1>
+          <p>请先设置新的登录密码</p>
+          <small>完成修改后才能进入咨询师工作台</small>
+        </section>
+        <form class="prototype-card login-card password-change-card" @submit.prevent="changePassword">
+          <h2>修改密码</h2>
+          <div v-if="error" class="error-card"><AlertCircle :size="16" />{{ error }}</div>
+          <label>临时密码<input v-model="passwordForm.oldPassword" class="input-field" type="password" autocomplete="current-password" placeholder="请输入临时密码" /></label>
+          <label>新密码<input v-model="passwordForm.newPassword" class="input-field" type="password" autocomplete="new-password" placeholder="至少8位，包含字母和特殊字符" /></label>
+          <label>确认新密码<input v-model="passwordForm.confirmPassword" class="input-field" type="password" autocomplete="new-password" placeholder="请再次输入新密码" /></label>
+          <p class="password-policy">新密码不能为纯数字、常见弱密码或与临时密码相同。</p>
+          <button class="btn-main" :disabled="loading"><ShieldCheck :size="18" />{{ loading ? '修改中...' : '完成修改并进入' }}</button>
+          <button class="password-logout" type="button" :disabled="loading" @click="logout">退出当前账号</button>
+        </form>
+      </div>
+    </section>
+
     <section v-else class="counselor-mobile mobile-container">
       <div class="status-bar">
         <span>09:41</span>
@@ -604,6 +629,7 @@ import {
   Search,
   Send,
   ShieldAlert,
+  ShieldCheck,
   Signal,
   Stethoscope,
   Upload,
@@ -617,6 +643,7 @@ import { createApiClient } from "@anxin/api-client";
 const api = createApiClient({ storageKey: "anxin_counselor_token" });
 
 const me = ref(null);
+const mustChangePassword = ref(false);
 const page = ref("dashboard");
 const loading = ref(false);
 const error = ref("");
@@ -630,6 +657,7 @@ const showAddSchedule = ref(false);
 const shiftType = ref("leave");
 const currentMessage = ref({});
 const loginForm = reactive({ jobNo: "", password: "" });
+const passwordForm = reactive({ oldPassword: "", newPassword: "", confirmPassword: "" });
 const counselorProfileEdit = reactive({
   department: "机械学院",
   title: "心理师",
@@ -886,10 +914,41 @@ async function login() {
   try {
     const data = await api.loginCounselor(loginForm);
     me.value = data.user;
-    await loadCounselorData();
-    page.value = "dashboard";
+    mustChangePassword.value = Boolean(data.mustChangePassword || data.user?.mustChangePassword);
+    if (!mustChangePassword.value) {
+      await loadCounselorData();
+      page.value = "dashboard";
+    }
   } catch (err) {
     error.value = err.message || "登录失败";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function changePassword() {
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+    error.value = "两次输入的新密码不一致";
+    return;
+  }
+  loading.value = true;
+  error.value = "";
+  try {
+    const data = await api.request("/api/auth/change-password", {
+      method: "POST",
+      body: {
+        oldPassword: passwordForm.oldPassword,
+        newPassword: passwordForm.newPassword
+      }
+    });
+    me.value = data.user;
+    mustChangePassword.value = false;
+    Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });
+    await loadCounselorData();
+    page.value = "dashboard";
+    showNotice("密码修改成功");
+  } catch (err) {
+    error.value = err.message || "密码修改失败";
   } finally {
     loading.value = false;
   }
@@ -898,6 +957,8 @@ async function login() {
 function logout() {
   api.logout();
   me.value = null;
+  mustChangePassword.value = false;
+  Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });
   page.value = "dashboard";
 }
 
@@ -931,7 +992,8 @@ onMounted(async () => {
   try {
     const data = await api.request("/api/auth/me");
     me.value = data.user;
-    await loadCounselorData();
+    mustChangePassword.value = Boolean(data.mustChangePassword || data.user?.mustChangePassword);
+    if (!mustChangePassword.value) await loadCounselorData();
   } catch {
     api.logout();
   }

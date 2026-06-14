@@ -22,6 +22,10 @@ export default {
       try {
         const data = await getCurrentUser();
         updateCurrentUser(data);
+        if (data.mustChangePassword || data.user?.mustChangePassword) {
+          uni.reLaunch({ url: "/pages/change-password/change-password" });
+          return;
+        }
         setTimeout(() => {
           checkCurrentPageAccess({ silent: true });
         }, 0);
