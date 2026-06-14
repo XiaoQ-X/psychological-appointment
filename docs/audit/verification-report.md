@@ -46,6 +46,7 @@ Excluded from the source tree:
 - Updated scripts to use `docker compose exec -T mysql`.
 - Added `docs/` with API, database, delivery, and audit documents.
 - Updated API test schedule creation so repeated test runs use unique future dates and do not collide with earlier runs.
+- Added explicit `db:generate` because the Prisma schema is outside the default path and fresh CI environments do not have a generated client.
 
 ## Commands Run
 

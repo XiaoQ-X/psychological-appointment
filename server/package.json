@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "db:generate": "dotenv -e ../.env -- prisma generate --schema ../database/schema.prisma",
     "db:migrate": "dotenv -e ../.env -- prisma migrate dev --name init --schema ../database/schema.prisma",
     "db:migrate:deploy": "dotenv -e ../.env -- prisma migrate deploy --schema ../database/schema.prisma",
     "db:push": "dotenv -e ../.env -- prisma db push --schema ../database/schema.prisma",

@@ -22,6 +22,7 @@
     "build:counselor": "npm run build -w @anxin/counselor",
     "build:admin": "npm run build -w @anxin/admin",
     "build": "npm run build:student && npm run build:counselor && npm run build:admin && npm run build:miniapp:mp-weixin",
+    "db:generate": "npm run db:generate -w @anxin/server",
     "db:migrate": "npm run db:migrate -w @anxin/server",
     "db:migrate:deploy": "npm run db:migrate:deploy -w @anxin/server",
     "db:push": "npm run db:push -w @anxin/server",

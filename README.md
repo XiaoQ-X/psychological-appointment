@@ -80,6 +80,7 @@ npm run dev:counselor
 npm run dev:admin
 npm run dev:miniapp:h5
 npm run build
+npm run db:generate
 npm run test:api
 npm run verify
 npm run reset:db
