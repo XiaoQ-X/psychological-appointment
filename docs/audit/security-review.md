@@ -124,3 +124,27 @@
 - uni-app / vue-i18n / jimp / ws：漏洞来自 `@dcloudio/*` alpha 工具链传递依赖，`npm audit fix --force` 会安装 `@dcloudio/uni-mp-weixin@0.0.973`，属于破坏性降级/跨版本替换，未执行。
 - Vite / esbuild：根 Vite 已小版本更新，但 uni-app 内部仍带旧链；需要 DCloud 整套升级分支验证 H5 与 mp-weixin。
 - ExcelJS / uuid：`uuid <11.1.1` 由 `exceljs@4.4.0` 传递引入，强制修复会安装 `exceljs@3.4.0`，属于破坏性降级；当前 Excel 导入路径不调用公告中的 UUID buffer 参数，保留并跟踪上游。
+
+## 2026-06-15 E2E、拆分与依赖复查补充
+
+本轮安全相关变化：
+
+- E2E 使用独立 `anxin_test` 数据库，并在脚本中校验测试库名称，避免误写演示库或开发库。
+- E2E 初始化脚本只生成测试账号和测试排班，运行结束后重置测试库。
+- 后端认证、管理员 dashboard、预约相关路由从 `server/src/app.js` 拆分，降低继续做权限审查和输入校验补强时的回归风险。
+- 学生和咨询师演示闭环的关键状态变化已由浏览器 E2E 覆盖，减少人工验证遗漏。
+
+依赖复查结果：
+
+- `npm run audit:prod` 已执行，当前仍有 31 个 high/moderate 级别漏洞，无 critical。
+- 未执行 `npm audit fix --force`。
+- uni-app / Vite / vue-i18n / jimp / ws 仍属于工具链传递依赖风险，需要在独立升级分支验证 H5 与 mp-weixin 构建、登录、路由、上传和样式行为。
+- ExcelJS / uuid 仍需跟踪上游或替换导入实现；当前不使用公告中 UUID buffer API，但仍应列为上线前风险。
+
+剩余安全优先级：
+
+1. 原生微信小程序真机验证 token 存储、刷新、退出、改密撤销和安全区行为。
+2. 为生产部署补齐 HTTPS、Cookie `Secure`、CSP、CSRF 策略和可信域名配置。
+3. 上传文件迁移到私有对象存储或受控下载接口，补齐恶意内容扫描和生命周期清理。
+4. 管理员敏感操作增加二次确认、操作原因、审计日志检索和必要的撤销机制。
+5. 依赖升级分支完成后重新执行四端 build、API test、E2E 和微信真机验收。

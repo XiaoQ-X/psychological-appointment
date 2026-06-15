@@ -22,6 +22,7 @@
     "build:counselor": "npm run build -w @anxin/counselor",
     "build:admin": "npm run build -w @anxin/admin",
     "build": "npm run build:student && npm run build:counselor && npm run build:admin && npm run build:miniapp:mp-weixin",
+    "build:e2e": "npm run build:student && npm run build:counselor && npm run build:admin && npm run build:miniapp:h5",
     "db:generate": "npm run db:generate -w @anxin/server",
     "db:migrate": "npm run db:migrate -w @anxin/server",
     "db:migrate:deploy": "npm run db:migrate:deploy -w @anxin/server",
@@ -31,12 +32,14 @@
     "test": "npm run test:api",
     "test:api": "node scripts/run-api-tests.js",
     "test:api:raw": "npm run test:api -w @anxin/server",
+    "test:e2e": "npm run build:e2e && node scripts/run-e2e-tests.js",
     "audit:prod": "npm audit --omit=dev --audit-level=critical --registry=https://registry.npmjs.org",
     "verify": "npm run build && npm run test:api",
     "start:all": "powershell -ExecutionPolicy Bypass -File scripts/start-all.ps1",
     "reset:db": "powershell -ExecutionPolicy Bypass -File scripts/reset-db.ps1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "concurrently": "^9.1.2",
     "dotenv-cli": "^7.4.4"
   },

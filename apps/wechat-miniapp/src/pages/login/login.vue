@@ -25,8 +25,8 @@
         <text class="login-card-title">{{ role === 'counselor' ? '老师登录' : '学生登录' }}</text>
 
         <view class="login-input-stack">
-          <input class="login-input" v-model="account" :placeholder="role === 'counselor' ? '请输入工号' : '请输入学号'" />
-          <input class="login-input" v-model="password" password placeholder="请输入密码" @confirm="login" />
+          <input class="login-input" data-testid="mini-account" v-model="account" :placeholder="role === 'counselor' ? '请输入工号' : '请输入学号'" />
+          <input class="login-input" data-testid="mini-password" v-model="password" password placeholder="请输入密码" @confirm="login" />
         </view>
 
         <template v-if="role === 'counselor'">
@@ -38,7 +38,7 @@
         </template>
 
         <template v-else>
-          <view class="login-policy-line" @click="togglePolicyAccepted">
+          <view class="login-policy-line" data-testid="mini-policy" @click="togglePolicyAccepted">
             <view :class="['login-checkbox', { checked: policyAccepted }]"></view>
             <text>我已阅读并同意</text>
             <text class="link" @click.stop="showPolicyTip('隐私政策')">《隐私政策》</text>
@@ -47,7 +47,7 @@
           </view>
         </template>
 
-        <button class="login-primary-btn" :loading="submitting" :disabled="submitting" @click="login">登录</button>
+        <button class="login-primary-btn" data-testid="mini-login-submit" :loading="submitting" :disabled="submitting" @click="login">登录</button>
 
         <view v-if="role === 'student'" class="login-links">
           <text>账号由学校统一导入</text>

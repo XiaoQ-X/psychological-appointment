@@ -138,3 +138,32 @@ git status --short
 git diff --check
 git ls-files | Select-String -Pattern "node_modules|dist|output|uploads/.+|\.zip$"
 ```
+
+## 2026-06-15 E2E 与服务端拆分补充
+
+本轮完成：
+
+- 新增仓库内 Playwright E2E 套件，覆盖学生首次改密、咨询师首次改密、学生预约创建/查看/取消、咨询师确认/签到/完成、管理员 dashboard/用户/咨询师/预约查看、小程序 H5 登录/改密/首页渲染。
+- E2E 使用 `anxin_test`，运行前自动重建、迁移、seed，运行后自动清理，不污染演示数据库。
+- 检查 `320x700`、`390x844`、`1365x900` 三个视口，覆盖横向溢出和主要按钮触控面积。
+- `server/src/app.js` 已抽出 `routes/auth.js`、`routes/admin-dashboard.js`、`routes/appointments.js`，接口路径和响应结构保持不变。
+- 修复学生端取消预约后本地展示仍停留在 pending 的演示闭环问题。
+- 修复咨询师端预约处理页只操作静态原型数据的问题，改为基于真实选中预约调用确认、签到和完成接口。
+- 修复学生端、咨询师端、管理员端多个移动端主要按钮小于 44px 的问题。
+- 修复管理员移动端 dashboard 和列表页在 E2E 视口下的横向溢出。
+
+当前 P1 状态：
+
+- 已修复：浏览器 E2E 缺失导致演示闭环只能靠人工/API 验证。
+- 已修复：`server/src/app.js` 无拆分起点，认证、dashboard、预约路由已先行模块化。
+- 已修复：学生取消预约、咨询师处理预约这两个影响演示闭环的前端状态问题。
+- 仍需跟进：原生微信小程序真机安全区、键盘顶起、授权和存储行为；当前仅覆盖 H5 预览。
+- 仍需跟进：uni-app/Vite/vue-i18n/jimp/ws/ExcelJS 依赖链升级，必须在独立升级分支完成全量回归。
+- 仍需跟进：管理员敏感批量操作二次确认、上传文件私有存储、生产 CSP/HTTPS/CSRF 配置。
+
+下一阶段优先级：
+
+1. 扩展 E2E 到异常路径：网络失败、重复提交、弱网加载态、空状态和表单错误态。
+2. 继续拆分 `server/src/app.js` 的 schedules、admin users、risk、content 路由，并提取共享 service。
+3. 建立 `codex/upgrade-uni-vite-toolchain` 分支验证 DCloud/uni-app/Vite 依赖升级。
+4. 使用微信开发者工具和真机验证小程序安全区、键盘、授权、上传和登录态刷新。

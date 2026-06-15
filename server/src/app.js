@@ -4,7 +4,6 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const ExcelJS = require("exceljs");
 const path = require("path");
@@ -14,6 +13,9 @@ const prisma = require("./db");
 const { success, fail, asyncHandler } = require("./utils/response");
 const { requireAuth, signToken, signRefreshToken, stripSecret, loadProfile, jwtSecret } = require("./middleware/auth");
 const { generateTemporaryPassword, passwordPolicyError } = require("./utils/password");
+const { registerAuthRoutes } = require("./routes/auth");
+const { registerAdminDashboardRoutes } = require("./routes/admin-dashboard");
+const { registerAppointmentRoutes } = require("./routes/appointments");
 const {
   ACTIVE_APPOINTMENT_STATUSES,
   toDate,
@@ -103,6 +105,10 @@ function setRefreshCookie(res, user) {
 function clearRefreshCookie(res) {
   const { maxAge, ...options } = refreshCookieOptions();
   res.clearCookie(refreshCookieName, options);
+}
+
+function readRefreshToken(req) {
+  return parseCookies(req.headers.cookie || "")[refreshCookieName];
 }
 
 const loginLimiter = rateLimit({
@@ -864,145 +870,23 @@ async function buildRecommendationResult(student, answers) {
   }));
 }
 
-async function loginWithPassword({ model, where, password, role }) {
-  const user = await prisma[model].findUnique({ where, include: model === "student" || model === "counselor" ? { campus: true } : undefined });
-  if (!user || user.status === "disabled" || user.status === "deleted") {
-    const error = new Error("账号不存在或已停用");
-    error.status = 401;
-    throw error;
-  }
-  const passwordOk = await bcrypt.compare(password || "", user.passwordHash);
-  if (!passwordOk) {
-    const error = new Error("账号或密码错误");
-    error.status = 401;
-    throw error;
-  }
-  const token = signToken({ id: user.id, role, sessionVersion: user.sessionVersion });
-  return {
-    token,
-    refreshUser: { id: user.id, role, sessionVersion: user.sessionVersion },
-    role,
-    mustChangePassword: Boolean(user.mustChangePassword),
-    user: safeUser(user)
-  };
-}
-
-app.post("/api/auth/student/login", loginLimiter, asyncHandler(async (req, res) => {
-  const studentNo = required(req.body.studentNo || req.body.account, "学号");
-  const password = required(req.body.password, "密码");
-  if (!req.body?.policyAccepted) {
-    return fail(res, 400, "请先阅读并同意隐私政策和服务协议");
-  }
-  const data = await loginWithPassword({ model: "student", where: { studentNo }, password, role: "student" });
-  await prisma.student.update({
-    where: { id: data.user.id },
-    data: { privacyAccepted: true, privacyAcceptedAt: new Date() }
-  });
-  setRefreshCookie(res, data.refreshUser);
-  delete data.refreshUser;
-  return success(res, data, "学生登录成功");
-}));
-
-app.post("/api/auth/counselor/login", loginLimiter, asyncHandler(async (req, res) => {
-  const jobNo = required(req.body.jobNo || req.body.account, "工号");
-  const password = required(req.body.password, "密码");
-  const data = await loginWithPassword({ model: "counselor", where: { jobNo }, password, role: "counselor" });
-  setRefreshCookie(res, data.refreshUser);
-  delete data.refreshUser;
-  return success(res, data, "咨询师登录成功");
-}));
-
-app.post("/api/auth/admin/login", loginLimiter, asyncHandler(async (req, res) => {
-  const username = required(req.body.username || req.body.account, "用户名");
-  const password = required(req.body.password, "密码");
-  const data = await loginWithPassword({ model: "admin", where: { username }, password, role: "admin" });
-  setRefreshCookie(res, data.refreshUser);
-  delete data.refreshUser;
-  return success(res, data, "管理员登录成功");
-}));
-
-app.get("/api/auth/me", requireAuth(["student", "counselor", "admin"], { allowPasswordChange: true }), (req, res) => {
-  return success(res, {
-    role: req.user.role,
-    mustChangePassword: Boolean(req.user.profile.mustChangePassword),
-    user: safeUser(req.user.profile)
-  });
-});
-
-app.post("/api/auth/refresh", asyncHandler(async (req, res) => {
-  const refreshToken = parseCookies(req.headers.cookie || "")[refreshCookieName];
-  if (!refreshToken) return fail(res, 401, "登录状态已失效", { code: "REFRESH_TOKEN_MISSING" });
-
-  let payload;
-  try {
-    payload = jwt.verify(refreshToken, jwtSecret());
-  } catch (error) {
-    clearRefreshCookie(res);
-    return fail(res, 401, "登录状态已失效", { name: error.name, code: error.name === "TokenExpiredError" ? "REFRESH_TOKEN_EXPIRED" : "REFRESH_TOKEN_INVALID" });
-  }
-  if (payload.type !== "refresh") {
-    clearRefreshCookie(res);
-    return fail(res, 401, "登录状态已失效", { code: "INVALID_TOKEN_TYPE" });
-  }
-
-  const profile = await loadProfile(payload.role, payload.id);
-  if (!profile || profile.status === "disabled" || profile.status === "deleted") {
-    clearRefreshCookie(res);
-    return fail(res, 401, "登录状态已失效", { code: "SESSION_REVOKED" });
-  }
-  if (Number(payload.sessionVersion || 0) !== Number(profile.sessionVersion || 1)) {
-    clearRefreshCookie(res);
-    return fail(res, 401, "登录状态已失效", { code: "SESSION_REVOKED" });
-  }
-
-  const token = signToken({ id: profile.id, role: payload.role, sessionVersion: profile.sessionVersion });
-  setRefreshCookie(res, { id: profile.id, role: payload.role, sessionVersion: profile.sessionVersion });
-  return success(res, {
-    token,
-    role: payload.role,
-    mustChangePassword: Boolean(profile.mustChangePassword),
-    user: safeUser(profile)
-  });
-}));
-
-app.post("/api/auth/change-password", requireAuth(["student", "counselor"], { allowPasswordChange: true }), asyncHandler(async (req, res) => {
-  const oldPassword = required(req.body.oldPassword, "旧密码");
-  const newPassword = required(req.body.newPassword, "新密码");
-  const policyError = passwordPolicyError(newPassword);
-  if (policyError) return fail(res, 400, policyError);
-  if (oldPassword === newPassword) return fail(res, 400, "新密码不能与旧密码相同");
-
-  const model = req.user.role;
-  const user = await prisma[model].findUnique({ where: { id: req.user.id } });
-  if (!user || !(await bcrypt.compare(oldPassword, user.passwordHash))) {
-    return fail(res, 400, "旧密码错误");
-  }
-  if (await bcrypt.compare(newPassword, user.passwordHash)) {
-    return fail(res, 400, "新密码不能与旧密码相同");
-  }
-
-  const updated = await prisma[model].update({
-    where: { id: user.id },
-    data: {
-      passwordHash: await bcrypt.hash(newPassword, 12),
-      mustChangePassword: false,
-      sessionVersion: { increment: 1 }
-    },
-    include: { campus: true }
-  });
-  await logOperation(req, `${req.user.role}:change-password`, `${req.user.role}s`, user.id, {});
-  setRefreshCookie(res, { id: updated.id, role: req.user.role, sessionVersion: updated.sessionVersion });
-  return success(res, {
-    token: signToken({ id: updated.id, role: req.user.role, sessionVersion: updated.sessionVersion }),
-    role: req.user.role,
-    mustChangePassword: false,
-    user: safeUser(updated)
-  }, "密码修改成功");
-}));
-
-app.post("/api/auth/logout", (req, res) => {
-  clearRefreshCookie(res);
-  return success(res, {}, "已退出登录");
+registerAuthRoutes(app, {
+  prisma,
+  success,
+  fail,
+  asyncHandler,
+  requireAuth,
+  signToken,
+  stripSecret,
+  loadProfile,
+  jwtSecret,
+  loginLimiter,
+  required,
+  setRefreshCookie,
+  clearRefreshCookie,
+  readRefreshToken,
+  passwordPolicyError,
+  logOperation
 });
 
 app.get("/api/student/profile", requireAuth(["student"]), asyncHandler(async (req, res) => {
@@ -1220,141 +1104,24 @@ app.get("/api/student/schedules", requireAuth(["student"]), asyncHandler(async (
   return success(res, schedules.map((item) => ({ ...item, counselor: safeUser(item.counselor) })));
 }));
 
-app.post("/api/student/appointments", requireAuth(["student"]), asyncHandler(async (req, res) => {
-  const now = new Date();
-  if (!req.body?.consentAccepted) {
-    return fail(res, 400, "请先确认预约知情同意");
-  }
-  const schedule = await assertScheduleAvailable(required(req.body.scheduleId, "排班"), prisma, now);
-  const appointmentNo = `AP${Date.now()}`;
-  let appointment;
-  try {
-    appointment = await prisma.$transaction(async (tx) => {
-      await assertNoActiveStudentScheduleOverlap({
-        studentId: req.user.id,
-        startAt: schedule.startAt,
-        endAt: schedule.endAt
-      }, tx);
-      await reserveScheduleForAppointment(tx, schedule, now);
-      return tx.appointment.create({
-        data: {
-          appointmentNo,
-          studentId: req.user.id,
-          counselorId: schedule.counselorId,
-          scheduleId: schedule.id,
-          campusId: schedule.campusId,
-          roomId: schedule.roomId,
-          type: req.body.type || "首次咨询",
-          concern: required(req.body.concern, "咨询诉求"),
-          contactPhone: req.body.contactPhone || req.user.profile.phone,
-          consentAccepted: Boolean(req.body.consentAccepted)
-        },
-        include: appointmentInclude()
-      });
-    });
-  } catch (error) {
-    if (isAppointmentConflict(error)) return fail(res, 409, error.message || "该时段已不可预约");
-    throw error;
-  }
-  await createMessage("counselor", appointment.counselorId, "新的待确认预约", `${req.user.profile.name} 提交了新的预约申请。`, "appointment", appointment.id);
-  await createMessage("student", req.user.id, "预约提交成功", "你的预约已提交，等待咨询师确认。", "appointment", appointment.id);
-  await logOperation(req, "appointment:create", "appointments", appointment.id, { appointmentNo });
-  return success(res, safeAppointment(appointment, { hideRecord: true }), "预约提交成功");
-}));
-
-app.get("/api/student/appointments", requireAuth(["student"]), asyncHandler(async (req, res) => {
-  const appointments = await prisma.appointment.findMany({
-    where: { studentId: req.user.id, status: req.query.status || undefined },
-    include: appointmentInclude(),
-    orderBy: { createdAt: "desc" }
-  });
-  return success(res, appointments.map((item) => safeAppointment(item, { hideRecord: true })));
-}));
-
-app.get("/api/student/appointments/:id", requireAuth(["student"]), asyncHandler(async (req, res) => {
-  const appointment = await prisma.appointment.findFirst({
-    where: { id: req.params.id, studentId: req.user.id },
-    include: appointmentInclude()
-  });
-  if (!appointment) return fail(res, 404, "预约不存在");
-  return success(res, safeAppointment(appointment, { hideRecord: true }));
-}));
-
-app.post("/api/student/appointments/:id/cancel", requireAuth(["student"]), asyncHandler(async (req, res) => {
-  const existing = await prisma.appointment.findFirst({ where: { id: req.params.id, studentId: req.user.id } });
-  if (!existing) return fail(res, 404, "预约不存在");
-  if (!isStatusAllowed(existing.status, ["pending", "confirmed"])) return fail(res, 409, "当前预约状态不可取消");
-  const now = new Date();
-  const appointment = await prisma.$transaction(async (tx) => {
-    await releaseFutureSchedule(tx, existing.scheduleId, now);
-    return tx.appointment.update({
-      where: { id: existing.id },
-      data: { status: "cancelled", cancelReason: req.body.reason || "学生取消预约" },
-      include: appointmentInclude()
-    });
-  });
-  await createMessage("counselor", appointment.counselorId, "预约已取消", `${req.user.profile.name} 取消了一条预约。`, "appointment", appointment.id);
-  await logOperation(req, "appointment:cancel", "appointments", appointment.id, { reason: req.body.reason });
-  return success(res, safeAppointment(appointment, { hideRecord: true }), "预约已取消");
-}));
-
-app.post("/api/student/appointments/:id/reschedule", requireAuth(["student"]), asyncHandler(async (req, res) => {
-  const existing = await prisma.appointment.findFirst({ where: { id: req.params.id, studentId: req.user.id } });
-  if (!existing) return fail(res, 404, "预约不存在");
-  if (!isStatusAllowed(existing.status, ["pending", "confirmed"])) return fail(res, 409, "当前预约状态不可改期");
-  const now = new Date();
-  const newSchedule = await assertScheduleAvailable(required(req.body.newScheduleId, "新排班"), prisma, now);
-  let appointment;
-  try {
-    appointment = await prisma.$transaction(async (tx) => {
-      await assertNoActiveStudentScheduleOverlap({
-        studentId: req.user.id,
-        startAt: newSchedule.startAt,
-        endAt: newSchedule.endAt,
-        ignoreAppointmentId: existing.id
-      }, tx);
-      await releaseFutureSchedule(tx, existing.scheduleId, now);
-      await reserveScheduleForAppointment(tx, newSchedule, now);
-      return tx.appointment.update({
-        where: { id: existing.id },
-        data: {
-          counselorId: newSchedule.counselorId,
-          scheduleId: newSchedule.id,
-          campusId: newSchedule.campusId,
-          roomId: newSchedule.roomId,
-          status: "pending",
-          rescheduleReason: req.body.reason || "学生申请改期"
-        },
-        include: appointmentInclude()
-      });
-    });
-  } catch (error) {
-    if (isAppointmentConflict(error)) return fail(res, 409, error.message || "该时段已不可预约");
-    throw error;
-  }
-  await createMessage("counselor", appointment.counselorId, "预约改期申请", `${req.user.profile.name} 提交了改期后的预约。`, "appointment", appointment.id);
-  await logOperation(req, "appointment:reschedule", "appointments", appointment.id, { newScheduleId: newSchedule.id });
-  return success(res, safeAppointment(appointment, { hideRecord: true }), "改期申请已提交");
-}));
-
-app.post("/api/student/appointments/:id/feedback", requireAuth(["student"]), asyncHandler(async (req, res) => {
-  const appointment = await prisma.appointment.findFirst({ where: { id: req.params.id, studentId: req.user.id } });
-  if (!appointment) return fail(res, 404, "预约不存在");
-  if (appointment.status !== "completed") return fail(res, 409, "仅已完成预约可评价");
-  const feedback = await prisma.feedback.upsert({
-    where: { appointmentId: appointment.id },
-    update: { rating: Number(req.body.rating || 5), tags: req.body.tags || [], content: req.body.content || "" },
-    create: {
-      appointmentId: appointment.id,
-      studentId: req.user.id,
-      rating: Number(req.body.rating || 5),
-      tags: req.body.tags || [],
-      content: req.body.content || ""
-    }
-  });
-  await logOperation(req, "feedback:upsert", "feedbacks", feedback.id, { appointmentId: appointment.id });
-  return success(res, feedback, "评价已提交");
-}));
+registerAppointmentRoutes(app, {
+  prisma,
+  success,
+  fail,
+  asyncHandler,
+  requireAuth,
+  required,
+  safeAppointment,
+  appointmentInclude,
+  assertScheduleAvailable,
+  assertNoActiveStudentScheduleOverlap,
+  reserveScheduleForAppointment,
+  releaseFutureSchedule,
+  isAppointmentConflict,
+  isStatusAllowed,
+  createMessage,
+  logOperation
+});
 
 app.post("/api/student/risk-assessments", requireAuth(["student"]), asyncHandler(async (req, res) => {
   const answers = req.body.answers || [];
@@ -1637,99 +1404,6 @@ app.get("/api/counselor/dashboard", requireAuth(["counselor"]), asyncHandler(asy
     prisma.message.findMany({ where: { recipientRole: "counselor", recipientId: req.user.id }, orderBy: { createdAt: "desc" }, take: 5 })
   ]);
   return success(res, { todayAppointments: todayAppointments.map(safeAppointment), pendingCount, riskCount, messages });
-}));
-
-app.get("/api/counselor/appointments", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  const appointments = await prisma.appointment.findMany({
-    where: { counselorId: req.user.id, status: req.query.status || undefined },
-    include: appointmentInclude(),
-    orderBy: { createdAt: "desc" }
-  });
-  return success(res, appointments.map(safeAppointment));
-}));
-
-app.get("/api/counselor/appointments/:id", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  const appointment = await prisma.appointment.findFirst({ where: { id: req.params.id, counselorId: req.user.id }, include: appointmentInclude() });
-  if (!appointment) return fail(res, 404, "预约不存在");
-  return success(res, safeAppointment(appointment));
-}));
-
-async function updateCounselorAppointment(req, res, nextStatus, message, extraData = {}, allowedStatuses = ["pending"]) {
-  const existing = await prisma.appointment.findFirst({ where: { id: req.params.id, counselorId: req.user.id } });
-  if (!existing) return fail(res, 404, "预约不存在");
-  if (!isStatusAllowed(existing.status, allowedStatuses)) return fail(res, 409, "当前预约状态不支持该操作");
-  const appointment = await prisma.appointment.update({
-    where: { id: existing.id },
-    data: { status: nextStatus, ...extraData },
-    include: appointmentInclude()
-  });
-  await createMessage("student", appointment.studentId, "预约状态更新", message, "appointment", appointment.id);
-  await logOperation(req, `appointment:${nextStatus}`, "appointments", appointment.id, extraData);
-  return success(res, safeAppointment(appointment), "预约状态已更新");
-}
-
-app.post("/api/counselor/appointments/:id/confirm", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  return updateCounselorAppointment(req, res, "confirmed", "你的预约已被咨询师确认，请按时到达。");
-}));
-
-app.post("/api/counselor/appointments/:id/reject", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  const existing = await prisma.appointment.findFirst({ where: { id: req.params.id, counselorId: req.user.id } });
-  if (!existing) return fail(res, 404, "预约不存在");
-  if (!isStatusAllowed(existing.status, ["pending"])) return fail(res, 409, "只有待确认预约可以拒绝");
-  const now = new Date();
-  const appointment = await prisma.$transaction(async (tx) => {
-    await releaseFutureSchedule(tx, existing.scheduleId, now);
-    return tx.appointment.update({
-      where: { id: existing.id },
-      data: { status: "rejected", rejectReason: req.body.reason || "咨询师暂无法接待该时段" },
-      include: appointmentInclude()
-    });
-  });
-  await createMessage("student", appointment.studentId, "预约已被拒绝", `拒绝原因：${appointment.rejectReason}`, "appointment", appointment.id);
-  await logOperation(req, "appointment:rejected", "appointments", appointment.id, { reason: appointment.rejectReason });
-  return success(res, safeAppointment(appointment), "已拒绝预约");
-}));
-
-app.post("/api/counselor/appointments/:id/checkin", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  return updateCounselorAppointment(req, res, "in_progress", "你的预约已签到，咨询正在进行。", {}, ["confirmed"]);
-}));
-
-app.post("/api/counselor/appointments/:id/complete", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  const existing = await prisma.appointment.findFirst({ where: { id: req.params.id, counselorId: req.user.id } });
-  if (!existing) return fail(res, 404, "预约不存在");
-  if (!isStatusAllowed(existing.status, ["in_progress"])) return fail(res, 409, "只有进行中的预约可以完成");
-  const appointment = await prisma.$transaction(async (tx) => {
-    const updated = await tx.appointment.update({
-      where: { id: existing.id },
-      data: { status: "completed", completedAt: new Date() },
-      include: appointmentInclude()
-    });
-    await tx.appointmentRecord.upsert({
-      where: { appointmentId: existing.id },
-      update: {
-        summary: req.body.summary || "已完成咨询。",
-        intervention: req.body.intervention || "",
-        riskNote: req.body.riskNote || "",
-        plan: req.body.plan || ""
-      },
-      create: {
-        appointmentId: existing.id,
-        counselorId: req.user.id,
-        summary: req.body.summary || "已完成咨询。",
-        intervention: req.body.intervention || "",
-        riskNote: req.body.riskNote || "",
-        plan: req.body.plan || ""
-      }
-    });
-    return updated;
-  });
-  await createMessage("student", appointment.studentId, "咨询已完成", "你的本次咨询已完成，可以进入预约详情提交评价。", "appointment", appointment.id);
-  await logOperation(req, "appointment:completed", "appointments", appointment.id, { hasRecord: true });
-  return success(res, safeAppointment(appointment), "咨询已完成");
-}));
-
-app.post("/api/counselor/appointments/:id/no-show", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
-  return updateCounselorAppointment(req, res, "no_show", "咨询师已标记本次预约未到。", {}, ["confirmed", "in_progress"]);
 }));
 
 app.post("/api/counselor/records", requireAuth(["counselor"]), asyncHandler(async (req, res) => {
@@ -2092,97 +1766,14 @@ app.post("/api/counselor/articles", requireAuth(["counselor"]), asyncHandler(asy
   return success(res, article, "文章已发布");
 }));
 
-function startOfLocalDay(date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function dateKey(date) {
-  return startOfLocalDay(date).toISOString().slice(0, 10);
-}
-
-function lastDays(count) {
-  const today = startOfLocalDay(new Date());
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (count - index - 1));
-    return date;
-  });
-}
-
-app.get("/api/admin/dashboard", requireAuth(["admin"]), asyncHandler(async (req, res) => {
-  const trendDays = lastDays(7);
-  const trendStart = trendDays[0];
-  const [
-    students,
-    counselors,
-    appointments,
-    pending,
-    risks,
-    activities,
-    schedules,
-    pendingShifts,
-    pendingReferrals,
-    pendingFeedbacks,
-    statusGroups,
-    typeGroups,
-    trendRows,
-    recentAppointments,
-    recentLogs
-  ] = await Promise.all([
-    prisma.student.count({ where: { status: { not: "deleted" } } }),
-    prisma.counselor.count({ where: { status: "active" } }),
-    prisma.appointment.count(),
-    prisma.appointment.count({ where: { status: "pending" } }),
-    prisma.riskAssessment.count({ where: { level: { in: ["high", "crisis"] }, processStatus: { not: "closed" } } }),
-    prisma.activity.count({ where: { status: "published" } }),
-    prisma.schedule.count(),
-    prisma.shiftApplication.count({ where: { status: "pending" } }),
-    prisma.referral.count({ where: { status: "pending" } }),
-    prisma.systemFeedback.count({ where: { status: { in: ["pending", "processing"] } } }),
-    prisma.appointment.groupBy({ by: ["status"], _count: { status: true } }),
-    prisma.appointment.groupBy({ by: ["type"], _count: { type: true } }),
-    prisma.appointment.findMany({
-      where: { createdAt: { gte: trendStart } },
-      select: { createdAt: true }
-    }),
-    prisma.appointment.findMany({
-      take: 5,
-      include: appointmentInclude(),
-      orderBy: { createdAt: "desc" }
-    }),
-    prisma.operationLog.findMany({
-      take: 6,
-      orderBy: { createdAt: "desc" }
-    })
-  ]);
-  const trendCounts = new Map();
-  trendRows.forEach((item) => {
-    const key = dateKey(item.createdAt);
-    trendCounts.set(key, (trendCounts.get(key) || 0) + 1);
-  });
-  return success(res, {
-    students,
-    counselors,
-    appointments,
-    pendingAppointments: pending,
-    activeRisks: risks,
-    activities,
-    schedules,
-    pendingShifts,
-    pendingReferrals,
-    pendingFeedbacks,
-    appointmentStatus: statusGroups.map((item) => ({ status: item.status, count: item._count.status })),
-    appointmentTypes: typeGroups.map((item) => ({ type: item.type || "unknown", count: item._count.type })),
-    appointmentTrend: trendDays.map((day) => {
-      const key = dateKey(day);
-      return { date: key, count: trendCounts.get(key) || 0 };
-    }),
-    recentAppointments: recentAppointments.map(safeAppointment),
-    recentLogs
-  });
-}));
+registerAdminDashboardRoutes(app, {
+  prisma,
+  success,
+  asyncHandler,
+  requireAuth,
+  appointmentInclude,
+  safeAppointment
+});
 
 app.get("/api/admin/students/import-template", requireAuth(["admin"]), asyncHandler(async (req, res) => (
   sendImportTemplate(res, "学生账号", studentImportHeaders, ["学号必填", "姓名必填", "6位身份核验码", "学院必填", "性别选填", "专业选填", "年级选填", "班级选填", "手机号选填", "校区选填", "active/disabled"])
@@ -2525,11 +2116,6 @@ app.post("/api/admin/counselors/:id/reset-password", requireAuth(["admin"]), asy
   });
   await logOperation(req, "counselor:reset-password", "counselors", counselor.id, {});
   return success(res, { user: safeUser(counselor), temporaryPassword }, "咨询师密码已重置");
-}));
-
-app.get("/api/admin/appointments", requireAuth(["admin"]), asyncHandler(async (req, res) => {
-  const appointments = await prisma.appointment.findMany({ where: { status: req.query.status || undefined }, include: appointmentInclude(), orderBy: { createdAt: "desc" } });
-  return success(res, appointments.map(safeAppointment));
 }));
 
 app.get("/api/admin/schedules", requireAuth(["admin"]), asyncHandler(async (req, res) => {

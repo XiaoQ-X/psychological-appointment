@@ -149,3 +149,27 @@ npm run reset:db
 - `/api/auth/refresh` 支持 refresh cookie 轮换；`/api/auth/logout` 会清除 refresh cookie。`sessionVersion` 仍保留，用户改密或管理员重置密码后旧 access token 和旧 refresh cookie 都会失效。
 - 原生微信小程序仍受平台存储模型限制，后续需要在微信开发者工具和真机中验证 token 存储、登录态刷新和安全区表现。
 - 在中文路径下运行 Vite dev server 会出现 Windows 路径编码问题；本轮浏览器验证改用生产 `dist` 静态预览完成。源码构建命令本身通过。
+
+## 2026-06-15 E2E 与路由拆分补充
+
+本轮新增仓库内 Playwright E2E 套件，命令为：
+
+```powershell
+npm run test:e2e
+```
+
+E2E 使用独立 `anxin_test` 数据库，运行前自动重建、迁移、seed，并额外写入浏览器测试账号；运行后自动清理测试库。脚本会启动 API 与四个静态预览服务，端口为 `4273` 至 `4276`，避免占用常规开发端口。
+
+新增覆盖：
+- 学生首次登录改密、查看咨询师与排班、创建预约、查看预约、取消预约。
+- 咨询师首次登录改密、确认预约、签到、完成预约。
+- 管理员登录 dashboard，查看用户、咨询师和预约页面。
+- 微信小程序 H5 登录、首次改密和首页渲染。
+- `320x700`、`390x844`、`1365x900` 视口下的横向溢出和主要触控面积检查。
+
+后端已开始从 `server/src/app.js` 拆分路由：
+- `server/src/routes/auth.js`
+- `server/src/routes/admin-dashboard.js`
+- `server/src/routes/appointments.js`
+
+接口路径和响应结构保持不变。后续拆分应继续以 API/E2E 测试作为保护，不做一次性大重构。

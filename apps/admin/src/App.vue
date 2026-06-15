@@ -1,6 +1,6 @@
 <template>
   <main v-if="!me" class="admin-login-page">
-    <form class="admin-login-card" @submit.prevent="login">
+    <form class="admin-login-card" data-testid="admin-login-form" @submit.prevent="login">
       <div class="login-logo-row">
         <AdminLogo class="logo-large" />
         <div>
@@ -18,11 +18,11 @@
 
       <label class="field-block">
         <span>账号</span>
-        <input v-model="loginForm.account" autocomplete="username" placeholder="请输入管理员账号" type="text" />
+        <input v-model="loginForm.account" data-testid="admin-account" autocomplete="username" placeholder="请输入管理员账号" type="text" />
       </label>
       <label class="field-block">
         <span>密码</span>
-        <input v-model="loginForm.password" autocomplete="current-password" placeholder="请输入密码" type="password" />
+        <input v-model="loginForm.password" data-testid="admin-password" autocomplete="current-password" placeholder="请输入密码" type="password" />
       </label>
 
       <div class="login-options">
@@ -30,7 +30,7 @@
         <span>忘记密码请联系系统管理员</span>
       </div>
 
-      <button class="btn btn-primary login-submit" :disabled="loading" type="submit">{{ loading ? '登录中...' : '登 录' }}</button>
+      <button class="btn btn-primary login-submit" data-testid="admin-login-submit" :disabled="loading" type="submit">{{ loading ? '登录中...' : '登 录' }}</button>
       <p class="login-footnote">仅供校内心理中心授权管理员使用</p>
     </form>
   </main>
@@ -90,7 +90,7 @@
       <div class="admin-content">
         <p v-if="notice" class="toast">{{ notice }}</p>
 
-        <section v-if="page === 'dashboard'" class="page-section">
+        <section v-if="page === 'dashboard'" class="page-section" data-testid="admin-dashboard">
           <h1 class="page-title">数据看板</h1>
           <p v-if="dashboardError" class="state-banner state-error">
             <span>{{ dashboardError }}</span>
@@ -178,7 +178,7 @@
           </article>
         </section>
 
-        <section v-if="page === 'students'" class="page-section">
+        <section v-if="page === 'students'" class="page-section" data-testid="admin-students">
           <div class="page-heading-row">
             <h1 class="page-title">学生管理</h1>
             <div class="heading-actions">
@@ -269,7 +269,7 @@
           </div>
         </section>
 
-        <section v-if="page === 'counselors'" class="page-section">
+        <section v-if="page === 'counselors'" class="page-section" data-testid="admin-counselors">
           <div class="page-heading-row">
             <h1 class="page-title">咨询师管理</h1>
             <div class="heading-actions">
@@ -368,7 +368,7 @@
           </div>
         </section>
 
-        <section v-if="page === 'appointments'" class="page-section">
+        <section v-if="page === 'appointments'" class="page-section" data-testid="admin-appointments">
           <h1 class="page-title">预约管理</h1>
           <FilterCard>
             <label><span>关键词</span><input v-model="appointmentFilters.keyword" placeholder="搜索学生/咨询师..." type="text" /></label>

@@ -12,12 +12,12 @@
           <p>咨询师工作台</p>
           <small>预约处理、学生档案、排班与风险反馈</small>
         </section>
-        <form class="prototype-card login-card" @submit.prevent="login">
+        <form class="prototype-card login-card" data-testid="counselor-login-form" @submit.prevent="login">
           <h2>老师登录</h2>
           <div v-if="error" class="error-card"><AlertCircle :size="16" />{{ error }}</div>
-          <label>工号<input v-model="loginForm.jobNo" class="input-field" autocomplete="username" placeholder="请输入工号" /></label>
-          <label>密码<input v-model="loginForm.password" class="input-field" type="password" autocomplete="current-password" placeholder="请输入密码" /></label>
-          <button class="btn-main" :disabled="loading"><LogIn :size="18" />{{ loading ? '登录中...' : '登录' }}</button>
+          <label>工号<input v-model="loginForm.jobNo" class="input-field" data-testid="counselor-account" autocomplete="username" placeholder="请输入工号" /></label>
+          <label>密码<input v-model="loginForm.password" class="input-field" data-testid="counselor-password" type="password" autocomplete="current-password" placeholder="请输入密码" /></label>
+          <button class="btn-main" data-testid="counselor-login-submit" :disabled="loading"><LogIn :size="18" />{{ loading ? '登录中...' : '登录' }}</button>
           <p class="login-support">账号或密码问题请联系心理中心管理员</p>
         </form>
       </div>
@@ -35,14 +35,14 @@
           <p>请先设置新的登录密码</p>
           <small>完成修改后才能进入咨询师工作台</small>
         </section>
-        <form class="prototype-card login-card password-change-card" @submit.prevent="changePassword">
+        <form class="prototype-card login-card password-change-card" data-testid="counselor-change-password-form" @submit.prevent="changePassword">
           <h2>修改密码</h2>
           <div v-if="error" class="error-card"><AlertCircle :size="16" />{{ error }}</div>
-          <label>临时密码<input v-model="passwordForm.oldPassword" class="input-field" type="password" autocomplete="current-password" placeholder="请输入临时密码" /></label>
-          <label>新密码<input v-model="passwordForm.newPassword" class="input-field" type="password" autocomplete="new-password" placeholder="至少8位，包含字母和特殊字符" /></label>
-          <label>确认新密码<input v-model="passwordForm.confirmPassword" class="input-field" type="password" autocomplete="new-password" placeholder="请再次输入新密码" /></label>
+          <label>临时密码<input v-model="passwordForm.oldPassword" class="input-field" data-testid="counselor-old-password" type="password" autocomplete="current-password" placeholder="请输入临时密码" /></label>
+          <label>新密码<input v-model="passwordForm.newPassword" class="input-field" data-testid="counselor-new-password" type="password" autocomplete="new-password" placeholder="至少8位，包含字母和特殊字符" /></label>
+          <label>确认新密码<input v-model="passwordForm.confirmPassword" class="input-field" data-testid="counselor-confirm-password" type="password" autocomplete="new-password" placeholder="请再次输入新密码" /></label>
           <p class="password-policy">新密码不能为纯数字、常见弱密码或与临时密码相同。</p>
-          <button class="btn-main" :disabled="loading"><ShieldCheck :size="18" />{{ loading ? '修改中...' : '完成修改并进入' }}</button>
+          <button class="btn-main" data-testid="counselor-change-password-submit" :disabled="loading"><ShieldCheck :size="18" />{{ loading ? '修改中...' : '完成修改并进入' }}</button>
           <button class="password-logout" type="button" :disabled="loading" @click="logout">退出当前账号</button>
         </form>
       </div>
@@ -61,7 +61,7 @@
       <p v-if="notice" class="toast">{{ notice }}</p>
 
       <div class="content-area page-scroll">
-        <section v-if="page === 'dashboard'" class="page-section dashboard-page">
+        <section v-if="page === 'dashboard'" class="page-section dashboard-page" data-testid="counselor-dashboard">
           <header class="dashboard-greeting">
             <div>
               <h2>{{ me?.name || '老师' }}，您好</h2>
@@ -129,7 +129,7 @@
             <button @click="page = 'appointment_history'"><Clock :size="15" /> 历史记录</button>
           </div>
           <div class="page-stack">
-            <article v-for="item in visibleAppointments" :key="item.student" class="appointment-list-card">
+            <article v-for="item in visibleAppointments" :key="item.id" class="appointment-list-card" data-testid="counselor-appointment-card">
               <div>
                 <span :class="['icon-bubble', item.tone]"><Clock :size="20" /></span>
                 <div>
@@ -140,7 +140,7 @@
               </div>
               <div class="two-actions" v-if="item.status === 'pending'">
                 <button @click="showNotice('已打开拒绝原因弹窗')">拒绝</button>
-                <button @click="page = 'appointment_detail'">处理</button>
+                <button data-testid="counselor-open-appointment" @click="openCounselorAppointment(item)">处理</button>
               </div>
             </article>
           </div>
@@ -205,31 +205,33 @@
           </div>
         </section>
 
-        <section v-if="page === 'appointment_detail'" class="page-section detail-bottom-space">
+        <section v-if="page === 'appointment_detail' && currentAppointment" class="page-section detail-bottom-space" data-testid="counselor-appointment-detail">
           <div class="page-stack">
             <section class="status-hero primary-gradient">
-              <div><span>预约编号</span><strong>BK20250715001</strong></div>
-              <em>待确认</em>
-              <p>请及时处理该预约</p>
+              <div><span>预约编号</span><strong>{{ currentAppointment.appointmentNo }}</strong></div>
+              <em>{{ currentAppointment.statusText }}</em>
+              <p>{{ counselorAppointmentHint }}</p>
             </section>
             <section class="prototype-card">
               <div class="person-row">
-                <span class="avatar blue">李</span>
-                <div><h3>李明</h3><p>计算机科学与技术学院 · 2024级</p></div>
+                <span class="avatar blue">{{ currentAppointment.student.slice(0, 1) }}</span>
+                <div><h3>{{ currentAppointment.student }}</h3><p>{{ currentAppointment.studentMeta }}</p></div>
               </div>
               <dl class="info-list">
-                <div><dt><CalendarClock :size="15" />预约时间</dt><dd>2025-07-15 14:00</dd></div>
+                <div><dt><CalendarClock :size="15" />预约时间</dt><dd>{{ currentAppointment.time }}</dd></div>
                 <div><dt><Clock :size="15" />时长</dt><dd>50分钟</dd></div>
-                <div><dt><FileText :size="15" />咨询类型</dt><dd>常规咨询</dd></div>
-                <div><dt><MapPin :size="15" />咨询室</dt><dd>待分配</dd></div>
+                <div><dt><FileText :size="15" />咨询类型</dt><dd>{{ currentAppointment.type }}</dd></div>
+                <div><dt><MapPin :size="15" />咨询室</dt><dd>{{ currentAppointment.location }}</dd></div>
               </dl>
-              <div class="note-block"><span>主诉问题</span><p>最近两周持续失眠，情绪低落，对学习提不起兴趣</p></div>
+              <div class="note-block"><span>主诉问题</span><p>{{ currentAppointment.concern || '-' }}</p></div>
             </section>
           </div>
           <div class="bottom-actions">
-            <button class="btn-main" @click="page = 'appointment_process'">确认预约</button>
-            <button class="btn-danger-outline" @click="showNotice('已打开拒绝预约弹窗')">拒绝预约</button>
-            <button class="btn-second" @click="page = 'write_record'">填写咨询记录</button>
+            <button v-if="currentAppointment.status === 'pending'" class="btn-main" data-testid="counselor-confirm-appointment" :disabled="loading" @click="updateAppointmentStatus('confirm')">确认预约</button>
+            <button v-if="currentAppointment.status === 'confirmed'" class="btn-main" data-testid="counselor-checkin-appointment" :disabled="loading" @click="updateAppointmentStatus('checkin')">签到并开始</button>
+            <button v-if="currentAppointment.status === 'in_progress'" class="btn-main" data-testid="counselor-complete-appointment" :disabled="loading" @click="updateAppointmentStatus('complete')">完成咨询</button>
+            <button v-if="currentAppointment.status === 'pending'" class="btn-danger-outline" :disabled="loading" @click="updateAppointmentStatus('reject')">拒绝预约</button>
+            <button v-if="currentAppointment.status === 'completed'" class="btn-second" @click="page = 'write_record'">查看咨询记录</button>
           </div>
         </section>
 
@@ -656,6 +658,7 @@ const selectedRoom = ref("咨询室A");
 const showAddSchedule = ref(false);
 const shiftType = ref("leave");
 const currentMessage = ref({});
+const selectedAppointmentId = ref("");
 const loginForm = reactive({ jobNo: "", password: "" });
 const passwordForm = reactive({ oldPassword: "", newPassword: "", confirmPassword: "" });
 const counselorProfileEdit = reactive({
@@ -790,6 +793,18 @@ const visibleStudents = computed(() => {
   if (studentTab.value === "high") return studentList.value.filter((item) => item.group === "high");
   return studentList.value.filter((item) => item.group === "recent");
 });
+const currentAppointment = computed(() => (
+  prototypeAppointments.value.find((item) => item.id === selectedAppointmentId.value) || null
+));
+const counselorAppointmentHint = computed(() => ({
+  pending: "请及时确认或拒绝该预约",
+  confirmed: "学生到达后可执行签到",
+  in_progress: "咨询进行中，结束后请完成咨询",
+  completed: "本次咨询已完成",
+  cancelled: "学生已取消该预约",
+  rejected: "该预约已拒绝",
+  no_show: "该预约已标记未到"
+}[currentAppointment.value?.status] || "查看预约处理状态"));
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -827,6 +842,7 @@ function mapAppointment(item) {
   return {
     ...item,
     student: item.student?.name || "-",
+    studentMeta: [item.student?.college, item.student?.grade].filter(Boolean).join(" · ") || "-",
     time,
     method: item.room?.name || item.type || "-",
     statusText: statusText(item.status),
@@ -834,6 +850,7 @@ function mapAppointment(item) {
     tone: item.status === "pending" ? "orange" : item.status === "completed" ? "gray" : "green",
     type: item.type || "咨询预约",
     location: item.room?.name || "-",
+    concern: item.concern || "",
     actions: [{ label: "查看详情", kind: "primary", target: "appointment_detail" }]
   };
 }
@@ -906,6 +923,38 @@ async function loadCounselorData() {
   messageList.value = messages.map(mapMessage);
   articleList.value = articles.map(mapArticle);
   currentMessage.value = messageList.value[0] || {};
+}
+
+function openCounselorAppointment(item) {
+  if (!item?.id) return;
+  selectedAppointmentId.value = item.id;
+  page.value = "appointment_detail";
+}
+
+async function updateAppointmentStatus(action) {
+  if (!currentAppointment.value || loading.value) return;
+  loading.value = true;
+  error.value = "";
+  try {
+    const body = action === "complete"
+      ? { summary: "E2E 咨询完成", intervention: "支持性倾听", riskNote: "未发现急性风险", plan: "按需复访" }
+      : action === "reject"
+        ? { reason: "当前时段无法接待" }
+        : undefined;
+    await api.request(`/api/counselor/appointments/${currentAppointment.value.id}/${action}`, {
+      method: "POST",
+      ...(body ? { body } : {})
+    });
+    const id = currentAppointment.value.id;
+    await loadCounselorData();
+    selectedAppointmentId.value = id;
+    showNotice(action === "confirm" ? "预约已确认" : action === "checkin" ? "已签到并开始咨询" : action === "complete" ? "咨询已完成" : "预约已拒绝");
+  } catch (err) {
+    error.value = err.message || "预约状态更新失败";
+    showNotice(error.value);
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function login() {

@@ -21,19 +21,19 @@
         </div>
 
         <div class="login-form-wrap">
-          <form class="login-mode-card" @submit.prevent="login">
+          <form class="login-mode-card" data-testid="student-login-form" @submit.prevent="login">
             <h2>学生登录</h2>
             <div v-if="error" class="prototype-error">
               <AlertCircle :size="16" />
               <span>{{ error }}</span>
             </div>
-            <input v-model="loginForm.studentNo" class="input-field" autocomplete="username" placeholder="请输入学号" type="text" />
-            <input v-model="loginForm.password" class="input-field" autocomplete="current-password" placeholder="请输入密码" type="password" />
+            <input v-model="loginForm.studentNo" class="input-field" data-testid="student-account" autocomplete="username" placeholder="请输入学号" type="text" />
+            <input v-model="loginForm.password" class="input-field" data-testid="student-password" autocomplete="current-password" placeholder="请输入密码" type="password" />
             <label class="prototype-checkline">
               <input v-model="policyAccepted" type="checkbox" />
               <span>我已阅读并同意<a @click.prevent="page = 'privacy'">《隐私政策》</a>和《服务协议》</span>
             </label>
-            <button class="btn-main" :disabled="loading">
+            <button class="btn-main" data-testid="student-login-submit" :disabled="loading">
               <LogIn :size="18" />
               {{ loading ? '登录中...' : '登录' }}
             </button>
@@ -67,14 +67,14 @@
           <small>完成修改后才能进入预约服务</small>
         </div>
         <div class="login-form-wrap">
-          <form class="login-mode-card password-change-card" @submit.prevent="changePassword">
+          <form class="login-mode-card password-change-card" data-testid="student-change-password-form" @submit.prevent="changePassword">
             <h2>修改密码</h2>
             <div v-if="error" class="prototype-error"><AlertCircle :size="16" /><span>{{ error }}</span></div>
-            <input v-model="passwordForm.oldPassword" class="input-field" autocomplete="current-password" placeholder="请输入临时密码" type="password" />
-            <input v-model="passwordForm.newPassword" class="input-field" autocomplete="new-password" placeholder="至少8位，包含字母和特殊字符" type="password" />
-            <input v-model="passwordForm.confirmPassword" class="input-field" autocomplete="new-password" placeholder="再次输入新密码" type="password" />
+            <input v-model="passwordForm.oldPassword" class="input-field" data-testid="student-old-password" autocomplete="current-password" placeholder="请输入临时密码" type="password" />
+            <input v-model="passwordForm.newPassword" class="input-field" data-testid="student-new-password" autocomplete="new-password" placeholder="至少8位，包含字母和特殊字符" type="password" />
+            <input v-model="passwordForm.confirmPassword" class="input-field" data-testid="student-confirm-password" autocomplete="new-password" placeholder="再次输入新密码" type="password" />
             <p class="password-policy">新密码不能为纯数字、常见弱密码或与临时密码相同。</p>
-            <button class="btn-main" :disabled="loading">
+            <button class="btn-main" data-testid="student-change-password-submit" :disabled="loading">
               <ShieldCheck :size="18" />
               {{ loading ? '修改中...' : '完成修改并进入' }}
             </button>
@@ -94,7 +94,7 @@
       <p v-if="error" class="toast error">{{ error }}</p>
       <p v-if="notice" class="toast">{{ notice }}</p>
 
-      <section v-if="page === 'home'" class="student-home mobile-container">
+      <section v-if="page === 'home'" class="student-home mobile-container" data-testid="student-home">
         <div class="status-bar">
           <span>09:41</span>
           <div class="status-icons">
@@ -372,7 +372,7 @@
         </div>
       </section>
 
-      <section v-if="page === 'booking'" class="student-prototype-page mobile-container">
+      <section v-if="page === 'booking'" class="student-prototype-page mobile-container" data-testid="student-booking">
         <div class="status-bar">
           <span>09:41</span>
           <div class="status-icons">
@@ -400,7 +400,7 @@
             </div>
           </div>
           <div class="counselor-proto-list">
-            <article v-for="item in visibleCounselors" :key="item.id" class="proto-counselor-card">
+            <article v-for="item in visibleCounselors" :key="item.id" class="proto-counselor-card" data-testid="student-counselor-card">
               <div class="proto-counselor-main">
                 <img v-if="item.avatarImage" :src="item.avatarImage" alt="Counselor Avatar" />
                 <div class="proto-counselor-info">
@@ -420,7 +420,7 @@
                 <span class="next-slot"><Clock :size="13" />最近可约：{{ item.nextSlot }}</span>
                 <span class="proto-card-actions">
                   <button class="ghost" @click="openCounselor(item.id)">查看详情</button>
-                  <button class="primary" @click="startBooking(item.id)">立即预约</button>
+                  <button class="primary" data-testid="student-book-counselor" @click="startBooking(item.id)">立即预约</button>
                 </span>
               </div>
             </article>
@@ -617,12 +617,12 @@
           </section>
         </div>
         <div class="proto-fixed-actions confirm-actions">
-          <button class="primary-block" @click="createAppointment">确认提交</button>
+          <button class="primary-block" data-testid="student-confirm-booking" @click="createAppointment">确认提交</button>
           <button class="plain-link" @click="page = 'appointment_form'">返回修改</button>
         </div>
       </section>
 
-      <section v-if="page === 'booking_success'" class="booking-success-prototype mobile-container">
+      <section v-if="page === 'booking_success'" class="booking-success-prototype mobile-container" data-testid="student-booking-success">
         <div class="success-check"><CheckCircle2 :size="62" /></div>
         <h1>预约提交成功</h1>
         <p>您的预约已提交，请耐心等待咨询师确认。确认结果将通过通知告知您。</p>
@@ -655,6 +655,7 @@
             :key="item.id"
             class="proto-appointment-card"
             :class="{ muted: item.status === 'completed' }"
+            data-testid="student-appointment-card"
           >
             <div class="appointment-card-head">
               <div>
@@ -668,7 +669,7 @@
               <p><MapPin :size="13" />{{ item.locationText || item.room?.name || '-' }}</p>
             </div>
             <div class="appointment-actions">
-              <button v-if="item.status === 'pending'" class="outline" @click="showStudentCancelModal = true">取消预约</button>
+              <button v-if="item.status === 'pending'" class="outline" data-testid="student-cancel-appointment" @click="openCancelAppointment(item)">取消预约</button>
               <button v-if="item.status === 'confirmed'" class="outline blue" @click="openReschedule(item)">申请改期</button>
               <button v-if="item.status === 'completed'" class="outline orange" @click="selectedAppointmentId = item.id; feedbackSubmitted = false; page = 'feedback'">去评价</button>
               <button v-if="item.status === 'pending'" class="filled-gray" @click="openAppointment(item)">查看详情</button>
@@ -739,7 +740,7 @@
         </div>
         <div class="proto-fixed-actions with-tabbar detail-actions">
           <template v-if="currentAppointment.status === 'pending'">
-            <button class="secondary-block danger-soft" @click="showStudentCancelModal = true">取消预约</button>
+            <button class="secondary-block danger-soft" data-testid="student-cancel-appointment" @click="openCancelAppointment(currentAppointment)">取消预约</button>
             <button class="secondary-block" @click="showNotice('咨询师联系方式将在预约确认后开放')">联系咨询师</button>
           </template>
           <template v-else-if="currentAppointment.status === 'confirmed'">
@@ -1728,7 +1729,7 @@
           <p>取消后该时段将释放给其他同学，请确认是否继续。</p>
           <div class="modal-actions">
             <button class="btn-second full" @click="showStudentCancelModal = false">暂不取消</button>
-            <button class="btn-warning" @click="confirmCancelAppointment">确认取消</button>
+            <button class="btn-warning" data-testid="student-confirm-cancel" @click="confirmCancelAppointment">确认取消</button>
           </div>
         </div>
       </div>
@@ -2569,6 +2570,9 @@ async function loadAll() {
     home.value = homeData;
     counselors.value = counselorData;
     appointments.value = appointmentData;
+    if (createdAppointment.value?.id) {
+      createdAppointment.value = appointmentData.find((item) => item.id === createdAppointment.value.id) || createdAppointment.value;
+    }
     articles.value = articleData;
     activities.value = activityData;
     messages.value = messageData;
@@ -2614,6 +2618,12 @@ async function createAppointment() {
 function openAppointment(item) {
   selectedAppointmentId.value = item.id;
   page.value = "appointment_detail";
+}
+
+function openCancelAppointment(item) {
+  if (!item?.id) return;
+  selectedAppointmentId.value = item.id;
+  showStudentCancelModal.value = true;
 }
 
 function openReschedule(item) {

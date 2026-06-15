@@ -53,5 +53,8 @@ jobs:
       - run: npm run db:seed
       - run: npm run build
       - run: npm run test:api
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=critical --registry=https://registry.npmjs.org

@@ -102,8 +102,8 @@ button { border: 0; cursor: pointer; }
 }
 
 .proto-back {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -353,8 +353,8 @@ label {
 }
 
 .dashboard-greeting button {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -395,6 +395,8 @@ label {
 
 .dashboard-main-card button,
 .section-head button {
+  min-width: 44px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -523,6 +525,8 @@ label {
 }
 
 .timeline-row button {
+  min-width: 44px;
+  min-height: 44px;
   color: var(--brand-primary);
   background: transparent;
   font-size: 12px;
@@ -1300,7 +1304,7 @@ label {
 
 .v23-dashboard-shortcuts button,
 .v23-appointment-toolbar button {
-  min-height: 38px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;

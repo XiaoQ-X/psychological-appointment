@@ -408,8 +408,8 @@ input:focus, select:focus, textarea:focus {
 
 .bell-btn {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   color: #4B5563;
@@ -428,6 +428,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .topbar-profile {
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2429,7 +2430,9 @@ tbody tr:last-child td {
     top: 0;
     z-index: 30;
     width: 100%;
+    max-width: 100vw;
     max-height: 236px;
+    overflow: hidden;
   }
 
   .sidebar-brand {
@@ -2438,6 +2441,9 @@ tbody tr:last-child td {
   }
 
   .sidebar-nav {
+    width: 100%;
+    min-width: 0;
+    max-width: 100vw;
     display: flex;
     gap: 8px;
     padding: 8px 12px;
@@ -2459,6 +2465,9 @@ tbody tr:last-child td {
 
   .admin-main {
     margin-left: 0;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .admin-topbar {
@@ -2482,6 +2491,13 @@ tbody tr:last-child td {
   .stat-grid-four,
   .stat-grid-three {
     grid-template-columns: 1fr;
+  }
+
+  .admin-content,
+  .page-section,
+  .page-section > * {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .chart-box {

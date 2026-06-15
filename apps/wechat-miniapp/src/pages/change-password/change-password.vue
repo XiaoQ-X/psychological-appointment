@@ -19,11 +19,11 @@
     </view>
 
     <view class="password-card">
-      <input v-model="form.oldPassword" class="password-input" password placeholder="请输入临时密码" />
-      <input v-model="form.newPassword" class="password-input" password placeholder="至少8位，包含字母和特殊字符" />
-      <input v-model="form.confirmPassword" class="password-input" password placeholder="再次输入新密码" @confirm="submit" />
+      <input v-model="form.oldPassword" class="password-input" data-testid="mini-old-password" password placeholder="请输入临时密码" />
+      <input v-model="form.newPassword" class="password-input" data-testid="mini-new-password" password placeholder="至少8位，包含字母和特殊字符" />
+      <input v-model="form.confirmPassword" class="password-input" data-testid="mini-confirm-password" password placeholder="再次输入新密码" @confirm="submit" />
       <text class="password-policy">新密码不能为纯数字、常见弱密码或与临时密码相同。</text>
-      <button class="password-submit" :loading="submitting" :disabled="submitting" @click="submit">
+      <button class="password-submit" data-testid="mini-change-password-submit" :loading="submitting" :disabled="submitting" @click="submit">
         {{ submitting ? "修改中..." : "完成修改并进入" }}
       </button>
       <button class="password-exit" :disabled="submitting" @click="exit">退出当前账号</button>

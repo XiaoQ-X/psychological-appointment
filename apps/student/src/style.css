@@ -620,8 +620,8 @@ h4, h3 { margin: 0; }
 }
 
 .header-actions button {
-  width: 28px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   position: relative;
@@ -829,7 +829,9 @@ h4, h3 { margin: 0; }
 }
 
 .prototype-section-head button {
-  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 4px;
   color: #9ca3af;
   background: transparent;
   font-size: 12px;

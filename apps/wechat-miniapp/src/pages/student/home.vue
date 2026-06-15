@@ -1,5 +1,5 @@
 <template>
-  <view class="mobile-container student-home-proto" :style="layoutStyle">
+  <view class="mobile-container student-home-proto" data-testid="mini-student-home" :style="layoutStyle">
     <view class="proto-status">
       <text class="proto-status-time">09:41</text>
       <view class="proto-status-icons">
