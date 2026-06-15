@@ -2504,6 +2504,65 @@ tbody tr:last-child td {
     gap: 16px;
     padding: 18px;
   }
+
+  .table-card:has(.admin-data-table) {
+    overflow-x: visible;
+    padding: 12px;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .admin-data-table,
+  .admin-data-table thead,
+  .admin-data-table tbody,
+  .admin-data-table tr,
+  .admin-data-table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .admin-data-table thead {
+    display: none;
+  }
+
+  .admin-data-table tr {
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 4px 14px rgba(17, 24, 39, 0.05);
+  }
+
+  .admin-data-table td {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #F3F4F6;
+  }
+
+  .admin-data-table td::before {
+    content: attr(data-label);
+    color: #6B7280;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .admin-data-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .admin-data-table .empty-cell {
+    display: flex;
+    min-height: 160px;
+    padding: 64px 16px 24px;
+  }
+
+  .admin-data-table .empty-cell::before {
+    content: "";
+  }
 }
 
 /* Control vertical-alignment baseline for admin tabs, filters, tags and actions. */

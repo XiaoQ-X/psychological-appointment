@@ -1,12 +1,14 @@
 const path = require("path");
 const dotenv = require("dotenv");
 const ExcelJS = require("exceljs");
+const jwt = require("jsonwebtoken");
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 dotenv.config();
 
 const app = require("./app");
 const prisma = require("./db");
+const { jwtSecret } = require("./middleware/auth");
 
 function listen() {
   return new Promise((resolve) => {
@@ -31,6 +33,39 @@ async function request(baseUrl, apiPath, options = {}) {
     throw error;
   }
   return payload.data;
+}
+
+async function requestWithMeta(baseUrl, apiPath, options = {}) {
+  const response = await fetch(`${baseUrl}${apiPath}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+      ...(options.cookie ? { Cookie: options.cookie } : {}),
+      ...(options.headers || {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.success) {
+    const error = new Error(`${options.method || "GET"} ${apiPath} failed: ${payload.message}`);
+    error.payload = payload;
+    throw error;
+  }
+  return { data: payload.data, headers: response.headers };
+}
+
+function setCookieHeaders(headers) {
+  if (typeof headers.getSetCookie === "function") return headers.getSetCookie();
+  const value = headers.get("set-cookie");
+  return value ? [value] : [];
+}
+
+function cookieHeader(headers) {
+  return setCookieHeaders(headers)
+    .map((item) => item.split(";")[0])
+    .filter(Boolean)
+    .join("; ");
 }
 
 async function requestForm(baseUrl, apiPath, { token, formData } = {}) {
@@ -111,11 +146,25 @@ async function main() {
     }
     checks.push("security-headers");
 
-    const adminLogin = await request(baseUrl, "/api/auth/admin/login", {
+    const adminLoginMeta = await requestWithMeta(baseUrl, "/api/auth/admin/login", {
       method: "POST",
       body: { username: "admin", password: "123456" }
     });
+    const adminLogin = adminLoginMeta.data;
+    const adminCookie = cookieHeader(adminLoginMeta.headers);
+    if (!adminCookie.includes("anxin_refresh") || "refreshToken" in adminLogin) {
+      throw new Error("Admin login must set an HttpOnly refresh cookie without exposing it in JSON.");
+    }
     checks.push("admin-login");
+
+    const adminRefresh = await request(baseUrl, "/api/auth/refresh", {
+      method: "POST",
+      headers: { Cookie: adminCookie }
+    });
+    if (!adminRefresh.token || adminRefresh.role !== "admin") {
+      throw new Error("Admin refresh cookie did not issue a fresh access token.");
+    }
+    checks.push("admin-refresh-cookie");
 
     const dashboardBefore = await request(baseUrl, "/api/admin/dashboard", { token: adminLogin.token });
     if (typeof dashboardBefore.students !== "number" || typeof dashboardBefore.counselors !== "number") {
@@ -239,21 +288,31 @@ async function main() {
     }
     checks.push("admin-reset-passwords");
 
-    const studentLogin = await request(baseUrl, "/api/auth/student/login", {
+    const studentLoginMeta = await requestWithMeta(baseUrl, "/api/auth/student/login", {
       method: "POST",
       body: { studentNo: importedStudentNo, password: studentTemporaryPassword, policyAccepted: true }
     });
+    const studentLogin = studentLoginMeta.data;
+    const studentCookie = cookieHeader(studentLoginMeta.headers);
     if (!studentLogin.token || !studentLogin.mustChangePassword) {
       throw new Error("Imported student must be forced to change the temporary password.");
     }
+    if (!studentCookie.includes("anxin_refresh") || "refreshToken" in studentLogin) {
+      throw new Error("Student login must set an HttpOnly refresh cookie without exposing it in JSON.");
+    }
     checks.push("student-first-login-requires-password-change");
 
-    const counselorLogin = await request(baseUrl, "/api/auth/counselor/login", {
+    const counselorLoginMeta = await requestWithMeta(baseUrl, "/api/auth/counselor/login", {
       method: "POST",
       body: { jobNo: importedCounselorNo, password: counselorTemporaryPassword }
     });
+    const counselorLogin = counselorLoginMeta.data;
+    const counselorCookie = cookieHeader(counselorLoginMeta.headers);
     if (!counselorLogin.token || !counselorLogin.mustChangePassword) {
       throw new Error("Imported counselor must be forced to change the temporary password.");
+    }
+    if (!counselorCookie.includes("anxin_refresh") || "refreshToken" in counselorLogin) {
+      throw new Error("Counselor login must set an HttpOnly refresh cookie without exposing it in JSON.");
     }
     checks.push("counselor-first-login-requires-password-change");
 
@@ -293,16 +352,20 @@ async function main() {
     const uniqueSuffix = String(unique).slice(-6);
     const studentNewPassword = `Student!${uniqueSuffix}`;
     const counselorNewPassword = `Counselor!${uniqueSuffix}`;
-    const studentPasswordChange = await request(baseUrl, "/api/auth/change-password", {
+    const studentPasswordChangeMeta = await requestWithMeta(baseUrl, "/api/auth/change-password", {
       method: "POST",
       token: studentLogin.token,
       body: { oldPassword: studentTemporaryPassword, newPassword: studentNewPassword }
     });
-    const counselorPasswordChange = await request(baseUrl, "/api/auth/change-password", {
+    const studentPasswordChange = studentPasswordChangeMeta.data;
+    const studentChangedCookie = cookieHeader(studentPasswordChangeMeta.headers);
+    const counselorPasswordChangeMeta = await requestWithMeta(baseUrl, "/api/auth/change-password", {
       method: "POST",
       token: counselorLogin.token,
       body: { oldPassword: counselorTemporaryPassword, newPassword: counselorNewPassword }
     });
+    const counselorPasswordChange = counselorPasswordChangeMeta.data;
+    const counselorChangedCookie = cookieHeader(counselorPasswordChangeMeta.headers);
     if (
       studentPasswordChange.mustChangePassword ||
       studentPasswordChange.user?.mustChangePassword ||
@@ -318,6 +381,13 @@ async function main() {
 
     await expectFailureCode(baseUrl, "/api/auth/me", { token: studentLogin.token }, "SESSION_REVOKED");
     await expectFailureCode(baseUrl, "/api/auth/me", { token: counselorLogin.token }, "SESSION_REVOKED");
+    await expectFailureCode(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: studentCookie } }, "SESSION_REVOKED");
+    await expectFailureCode(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: counselorCookie } }, "SESSION_REVOKED");
+    const studentRefreshAfterChange = await request(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: studentChangedCookie } });
+    const counselorRefreshAfterChange = await request(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: counselorChangedCookie } });
+    if (!studentRefreshAfterChange.token || !counselorRefreshAfterChange.token) {
+      throw new Error("Password change must rotate refresh cookies.");
+    }
     checks.push("self-password-change-revokes-old-tokens");
 
     await expectRequestFailure(baseUrl, "/api/auth/student/login", {
@@ -326,18 +396,34 @@ async function main() {
     }, "账号或密码错误");
     checks.push("temporary-password-invalidated");
 
-    const studentRelogin = await request(baseUrl, "/api/auth/student/login", {
+    const studentReloginMeta = await requestWithMeta(baseUrl, "/api/auth/student/login", {
       method: "POST",
       body: { studentNo: importedStudentNo, password: studentNewPassword, policyAccepted: true }
     });
-    const counselorRelogin = await request(baseUrl, "/api/auth/counselor/login", {
+    const studentRelogin = studentReloginMeta.data;
+    const studentReloginCookie = cookieHeader(studentReloginMeta.headers);
+    const counselorReloginMeta = await requestWithMeta(baseUrl, "/api/auth/counselor/login", {
       method: "POST",
       body: { jobNo: importedCounselorNo, password: counselorNewPassword }
     });
+    const counselorRelogin = counselorReloginMeta.data;
+    const counselorReloginCookie = cookieHeader(counselorReloginMeta.headers);
     if (studentRelogin.mustChangePassword || counselorRelogin.mustChangePassword) {
       throw new Error("Password-change state returned after successful re-login.");
     }
     checks.push("password-change-relogin");
+
+    const expiredStudentToken = jwt.sign(
+      { id: studentRelogin.user.id, role: "student", sessionVersion: studentRelogin.user.sessionVersion, type: "access" },
+      jwtSecret(),
+      { expiresIn: -1 }
+    );
+    await expectFailureCode(baseUrl, "/api/auth/me", { token: expiredStudentToken }, "TOKEN_EXPIRED");
+    const refreshedStudent = await request(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: studentReloginCookie } });
+    if (!refreshedStudent.token || refreshedStudent.role !== "student") {
+      throw new Error("Refresh cookie did not restore an expired student access token.");
+    }
+    checks.push("expired-access-token-refresh");
 
     const schedule = await request(baseUrl, "/api/admin/schedules", {
       method: "POST",
@@ -496,7 +582,16 @@ async function main() {
     }
     await expectFailureCode(baseUrl, "/api/student/schedules", { token: studentRelogin.token }, "SESSION_REVOKED");
     await expectFailureCode(baseUrl, "/api/counselor/appointments", { token: counselorRelogin.token }, "SESSION_REVOKED");
+    await expectFailureCode(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: studentReloginCookie } }, "SESSION_REVOKED");
+    await expectFailureCode(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: counselorReloginCookie } }, "SESSION_REVOKED");
     checks.push("admin-reset-revokes-old-tokens");
+
+    const logoutMeta = await requestWithMeta(baseUrl, "/api/auth/logout", { method: "POST", headers: { Cookie: adminCookie } });
+    if (!setCookieHeaders(logoutMeta.headers).some((item) => item.includes("anxin_refresh=") && (item.includes("Max-Age=0") || item.includes("Expires=Thu, 01 Jan 1970")))) {
+      throw new Error("Logout must clear the refresh cookie.");
+    }
+    await expectFailureCode(baseUrl, "/api/auth/refresh", { method: "POST", headers: { Cookie: "" } }, "REFRESH_TOKEN_MISSING");
+    checks.push("logout-clears-refresh-cookie");
 
     console.log(JSON.stringify({ success: true, checks }, null, 2));
   } finally {

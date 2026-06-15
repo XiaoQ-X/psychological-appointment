@@ -142,3 +142,10 @@ npm run reset:db
 - 后端和部分前端入口文件体量较大，需要按模块拆分。
 - uni-app/Vite 构建链仍有高危依赖项，必须通过兼容性升级处理。
 - 微信小程序仍需微信开发者工具和真机验证安全区、键盘顶起与授权行为。
+
+### 2026-06-15 更新
+
+- 学生端、咨询师端和管理员 H5 已改为内存 access token + HttpOnly refresh cookie。登录接口只返回短期 access token，并通过 `Set-Cookie` 写入 refresh cookie；前端不再把 access token 写入 `localStorage`。
+- `/api/auth/refresh` 支持 refresh cookie 轮换；`/api/auth/logout` 会清除 refresh cookie。`sessionVersion` 仍保留，用户改密或管理员重置密码后旧 access token 和旧 refresh cookie 都会失效。
+- 原生微信小程序仍受平台存储模型限制，后续需要在微信开发者工具和真机中验证 token 存储、登录态刷新和安全区表现。
+- 在中文路径下运行 Vite dev server 会出现 Windows 路径编码问题；本轮浏览器验证改用生产 `dist` 静态预览完成。源码构建命令本身通过。

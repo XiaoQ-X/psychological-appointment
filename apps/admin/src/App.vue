@@ -1366,14 +1366,14 @@ const AdminTable = {
   },
   setup(props, { slots }) {
     return () => h("div", { class: "table-card custom-shadow" }, [
-      h("table", [
+      h("table", { class: "admin-data-table" }, [
         h("thead", [
           h("tr", props.columns.map((col) => h("th", { class: col.headerClass }, col.label)))
         ]),
         h("tbody", props.rows.length
           ? props.rows.map((row, rowIndex) => h("tr", { key: row.id || rowIndex }, props.columns.map((col) => h(
             "td",
-            { class: col.cellClass },
+            { class: col.cellClass, "data-label": col.label },
             col.key === "actions" && slots.actions
               ? slots.actions({ row })
               : col.render
@@ -1986,7 +1986,7 @@ function authHeaders(extra = {}) {
 
 function handleAdminError(error, fallback = "操作失败") {
   if (error?.status === 401) {
-    api.logout();
+    void api.logout().catch(() => api.setToken(null));
     me.value = false;
     page.value = "dashboard";
     showNotice("登录状态已失效，请重新登录");
@@ -2677,8 +2677,8 @@ async function login() {
   }
 }
 
-function logout() {
-  api.logout();
+async function logout() {
+  await api.logout();
   me.value = false;
   page.value = "dashboard";
 }
@@ -3921,15 +3921,14 @@ async function confirmModal() {
 }
 
 onMounted(async () => {
-  if (!api.token()) return;
   try {
-    const session = await adminRequest("/api/auth/me", {}, "登录状态恢复失败");
+    const session = await api.refreshSession();
     if (session.role === "admin") {
       me.value = true;
       await loadAdminData();
     }
   } catch (error) {
-    api.logout();
+    api.setToken(null);
   }
 });
 </script>

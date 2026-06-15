@@ -105,3 +105,43 @@ CI 会执行生产依赖审计，并在出现 critical 漏洞时失败；当前 
 ## 结论
 
 项目当前可安装、可迁移、可构建、可重复执行隔离 API 闭环，并完成学生/咨询师/小程序首次登录强制改密、管理员真实 dashboard 聚合和旧 token 服务端撤销。尚不能视为生产就绪，主要差距是 HttpOnly/短期令牌方案、上传隔离、微信真机验证、构建链漏洞和更完整的浏览器 E2E。
+
+## 2026-06-15 验证补充
+
+本轮实际执行并通过：
+
+- `npm ci`
+- `npm run db:generate`
+- `docker compose up -d mysql`
+- `npm run db:migrate:deploy`
+- `npm run db:seed`
+- `npm run build`
+- `npm run build:miniapp:h5`
+- `npm run test:api` 连续多次通过，最终状态再次通过
+- `npm run audit:prod` 执行完成，仍为 31 个 high/moderate 漏洞，无 critical
+- `node --check server/src/app.js`
+- `node --check server/src/middleware/auth.js`
+- `node --check server/src/test-api.js`
+
+API 新增覆盖：
+
+- 管理员、学生、咨询师登录写入 HttpOnly refresh cookie，响应体不暴露 refresh token。
+- `/api/auth/refresh` 成功刷新 access token 并轮换 refresh cookie。
+- 自助改密后旧 access token 与旧 refresh cookie 均失效。
+- 管理员重置学生/咨询师密码后旧 access token 与旧 refresh cookie 均失效。
+- 过期 access token 返回 `TOKEN_EXPIRED`，可通过 refresh cookie 换取新 token。
+- `/api/auth/logout` 清除 refresh cookie。
+
+浏览器验证：
+
+- 由于 Windows 中文路径下 Vite dev server 会把 `学校` 解析为乱码路径，H5 浏览器验证改用生产 `dist` 静态预览完成。
+- 视口 `390x844`：学生 H5 首次登录改密通过，改密后进入业务首页，无横向溢出。
+- 视口 `390x844`：咨询师 H5 首次登录改密通过，改密后进入工作台，无横向溢出。
+- 视口 `390x844`：管理员登录和 dashboard 通过，`scrollWidth` 不大于 `clientWidth`。
+- 视口 `320x700`、`390x844`、`1365x900`：管理员登录页无横向溢出。
+- 小程序 H5 生产构建首屏在 `390x844` 渲染通过，无横向溢出。
+
+未完成验证：
+
+- 浏览器层没有完成学生创建预约、取消预约、咨询师确认/签到/完成的全交互 E2E；这些闭环仍由 `npm run test:api` 覆盖。
+- 原生微信小程序真机、微信开发者工具、键盘顶起和安全区仍未验证。

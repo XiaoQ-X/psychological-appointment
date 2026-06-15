@@ -4,6 +4,7 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const ExcelJS = require("exceljs");
 const path = require("path");
@@ -11,7 +12,7 @@ const fs = require("fs/promises");
 const { randomUUID } = require("crypto");
 const prisma = require("./db");
 const { success, fail, asyncHandler } = require("./utils/response");
-const { requireAuth, signToken, stripSecret } = require("./middleware/auth");
+const { requireAuth, signToken, signRefreshToken, stripSecret, loadProfile, jwtSecret } = require("./middleware/auth");
 const { generateTemporaryPassword, passwordPolicyError } = require("./utils/password");
 const {
   ACTIVE_APPOINTMENT_STATUSES,
@@ -32,6 +33,7 @@ const app = express();
 const isProduction = process.env.NODE_ENV === "production";
 const uploadRoot = path.resolve(__dirname, "../..", process.env.UPLOAD_DIR || "uploads");
 const avatarUploadDir = path.join(uploadRoot, "avatars");
+const refreshCookieName = process.env.REFRESH_COOKIE_NAME || "anxin_refresh";
 
 const corsOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
@@ -66,6 +68,42 @@ app.use(cors({
 app.use(express.json({ limit: "2mb" }));
 app.use(morgan(isProduction ? "combined" : "dev"));
 app.use("/uploads", express.static(uploadRoot));
+
+function refreshCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : isProduction,
+    sameSite: process.env.COOKIE_SAMESITE || "lax",
+    path: "/api/auth",
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  };
+}
+
+function parseCookies(header = "") {
+  return String(header || "").split(";").reduce((cookies, pair) => {
+    const index = pair.indexOf("=");
+    if (index < 0) return cookies;
+    const key = pair.slice(0, index).trim();
+    const value = pair.slice(index + 1).trim();
+    if (key) {
+      try {
+        cookies[key] = decodeURIComponent(value);
+      } catch (error) {
+        cookies[key] = value;
+      }
+    }
+    return cookies;
+  }, {});
+}
+
+function setRefreshCookie(res, user) {
+  res.cookie(refreshCookieName, signRefreshToken(user), refreshCookieOptions());
+}
+
+function clearRefreshCookie(res) {
+  const { maxAge, ...options } = refreshCookieOptions();
+  res.clearCookie(refreshCookieName, options);
+}
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -842,6 +880,7 @@ async function loginWithPassword({ model, where, password, role }) {
   const token = signToken({ id: user.id, role, sessionVersion: user.sessionVersion });
   return {
     token,
+    refreshUser: { id: user.id, role, sessionVersion: user.sessionVersion },
     role,
     mustChangePassword: Boolean(user.mustChangePassword),
     user: safeUser(user)
@@ -859,6 +898,8 @@ app.post("/api/auth/student/login", loginLimiter, asyncHandler(async (req, res) 
     where: { id: data.user.id },
     data: { privacyAccepted: true, privacyAcceptedAt: new Date() }
   });
+  setRefreshCookie(res, data.refreshUser);
+  delete data.refreshUser;
   return success(res, data, "学生登录成功");
 }));
 
@@ -866,6 +907,8 @@ app.post("/api/auth/counselor/login", loginLimiter, asyncHandler(async (req, res
   const jobNo = required(req.body.jobNo || req.body.account, "工号");
   const password = required(req.body.password, "密码");
   const data = await loginWithPassword({ model: "counselor", where: { jobNo }, password, role: "counselor" });
+  setRefreshCookie(res, data.refreshUser);
+  delete data.refreshUser;
   return success(res, data, "咨询师登录成功");
 }));
 
@@ -873,6 +916,8 @@ app.post("/api/auth/admin/login", loginLimiter, asyncHandler(async (req, res) =>
   const username = required(req.body.username || req.body.account, "用户名");
   const password = required(req.body.password, "密码");
   const data = await loginWithPassword({ model: "admin", where: { username }, password, role: "admin" });
+  setRefreshCookie(res, data.refreshUser);
+  delete data.refreshUser;
   return success(res, data, "管理员登录成功");
 }));
 
@@ -883,6 +928,42 @@ app.get("/api/auth/me", requireAuth(["student", "counselor", "admin"], { allowPa
     user: safeUser(req.user.profile)
   });
 });
+
+app.post("/api/auth/refresh", asyncHandler(async (req, res) => {
+  const refreshToken = parseCookies(req.headers.cookie || "")[refreshCookieName];
+  if (!refreshToken) return fail(res, 401, "登录状态已失效", { code: "REFRESH_TOKEN_MISSING" });
+
+  let payload;
+  try {
+    payload = jwt.verify(refreshToken, jwtSecret());
+  } catch (error) {
+    clearRefreshCookie(res);
+    return fail(res, 401, "登录状态已失效", { name: error.name, code: error.name === "TokenExpiredError" ? "REFRESH_TOKEN_EXPIRED" : "REFRESH_TOKEN_INVALID" });
+  }
+  if (payload.type !== "refresh") {
+    clearRefreshCookie(res);
+    return fail(res, 401, "登录状态已失效", { code: "INVALID_TOKEN_TYPE" });
+  }
+
+  const profile = await loadProfile(payload.role, payload.id);
+  if (!profile || profile.status === "disabled" || profile.status === "deleted") {
+    clearRefreshCookie(res);
+    return fail(res, 401, "登录状态已失效", { code: "SESSION_REVOKED" });
+  }
+  if (Number(payload.sessionVersion || 0) !== Number(profile.sessionVersion || 1)) {
+    clearRefreshCookie(res);
+    return fail(res, 401, "登录状态已失效", { code: "SESSION_REVOKED" });
+  }
+
+  const token = signToken({ id: profile.id, role: payload.role, sessionVersion: profile.sessionVersion });
+  setRefreshCookie(res, { id: profile.id, role: payload.role, sessionVersion: profile.sessionVersion });
+  return success(res, {
+    token,
+    role: payload.role,
+    mustChangePassword: Boolean(profile.mustChangePassword),
+    user: safeUser(profile)
+  });
+}));
 
 app.post("/api/auth/change-password", requireAuth(["student", "counselor"], { allowPasswordChange: true }), asyncHandler(async (req, res) => {
   const oldPassword = required(req.body.oldPassword, "旧密码");
@@ -910,6 +991,7 @@ app.post("/api/auth/change-password", requireAuth(["student", "counselor"], { al
     include: { campus: true }
   });
   await logOperation(req, `${req.user.role}:change-password`, `${req.user.role}s`, user.id, {});
+  setRefreshCookie(res, { id: updated.id, role: req.user.role, sessionVersion: updated.sessionVersion });
   return success(res, {
     token: signToken({ id: updated.id, role: req.user.role, sessionVersion: updated.sessionVersion }),
     role: req.user.role,
@@ -918,7 +1000,8 @@ app.post("/api/auth/change-password", requireAuth(["student", "counselor"], { al
   }, "密码修改成功");
 }));
 
-app.post("/api/auth/logout", requireAuth(["student", "counselor", "admin"], { allowPasswordChange: true }), (req, res) => {
+app.post("/api/auth/logout", (req, res) => {
+  clearRefreshCookie(res);
   return success(res, {}, "已退出登录");
 });
 

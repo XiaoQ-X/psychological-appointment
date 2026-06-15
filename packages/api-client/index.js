@@ -1,19 +1,22 @@
 export function createApiClient(options = {}) {
   const baseUrl = options.baseUrl || import.meta.env?.VITE_API_BASE_URL || "http://localhost:3000";
-  const storageKey = options.storageKey || "anxin_token";
+  let accessToken = "";
 
-  const token = () => localStorage.getItem(storageKey);
-  const setToken = (value) => value ? localStorage.setItem(storageKey, value) : localStorage.removeItem(storageKey);
+  const token = () => accessToken;
+  const setToken = (value) => {
+    accessToken = value || "";
+  };
 
-  async function request(path, config = {}) {
+  async function send(path, config = {}) {
     const headers = {
       "Content-Type": "application/json",
       ...(config.headers || {})
     };
-    const currentToken = token();
-    if (currentToken) headers.Authorization = `Bearer ${currentToken}`;
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
     const response = await fetch(`${baseUrl}${path}`, {
       ...config,
+      credentials: "include",
       headers,
       body: config.body && typeof config.body !== "string" ? JSON.stringify(config.body) : config.body
     });
@@ -27,8 +30,27 @@ export function createApiClient(options = {}) {
     return payload.data;
   }
 
+  async function refreshSession() {
+    const data = await send("/api/auth/refresh", { method: "POST", skipRefresh: true });
+    setToken(data.token);
+    return data;
+  }
+
+  async function request(path, config = {}) {
+    try {
+      return await send(path, config);
+    } catch (error) {
+      const code = error.payload?.error?.code;
+      if (config.skipRefresh || !["TOKEN_EXPIRED", "TOKEN_INVALID"].includes(code)) {
+        throw error;
+      }
+      await refreshSession();
+      return send(path, { ...config, skipRefresh: true });
+    }
+  }
+
   async function login(role, body) {
-    const data = await request(`/api/auth/${role}/login`, { method: "POST", body });
+    const data = await send(`/api/auth/${role}/login`, { method: "POST", body, skipRefresh: true });
     setToken(data.token);
     return data;
   }
@@ -37,8 +59,13 @@ export function createApiClient(options = {}) {
     request,
     token,
     setToken,
-    logout() {
-      setToken(null);
+    refreshSession,
+    async logout() {
+      try {
+        await send("/api/auth/logout", { method: "POST", skipRefresh: true });
+      } finally {
+        setToken(null);
+      }
     },
     loginStudent(body) {
       return login("student", body);

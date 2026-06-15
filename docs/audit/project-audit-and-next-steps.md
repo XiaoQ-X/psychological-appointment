@@ -17,6 +17,32 @@
 
 `https://github.com/XiaoQ-X/psychological-appointment`
 
+## 2026-06-15 更新
+
+本轮已完成：
+
+- H5 会话方案从 `localStorage` access token 改为内存短期 access token + HttpOnly refresh cookie。
+- 新增 `/api/auth/refresh` refresh cookie 轮换；`/api/auth/logout` 清除 refresh cookie。
+- 保留 `sessionVersion` 并扩展到 refresh cookie：自助改密、管理员重置密码后旧 access token 与旧 refresh cookie 均失效。
+- 管理员复杂表格在移动端增加卡片式行布局，降低 390px 视口下的横向阅读成本。
+- API 测试补充登录 refresh cookie、刷新、登出、改密撤销、管理员重置撤销、过期 token 等断言。
+- 浏览器验证补充学生/咨询师首次改密、管理员移动 dashboard、小程序 H5 首屏、320/390/1365 关键视口。
+
+当前 P1 调整：
+
+- 已降级/修复：H5 `localStorage` token 存储风险在学生端、咨询师端、管理员端已通过内存 token + HttpOnly refresh cookie 缓解。
+- 已降级/部分修复：管理员移动端复杂表格已转为卡片式列表，但批量操作、详情密度和二次确认仍需继续产品化。
+- 未完成：浏览器层完整预约 E2E 仍未覆盖创建、取消、咨询师确认/签到/完成；API 闭环已覆盖，下一轮应补 Playwright 项目级测试。
+- 未完成：`server/src/app.js` 路由拆分，本轮因会话安全和验证优先，未做大规模拆分。
+- 未完成：原生微信小程序真机安全区、键盘顶起、授权和存储策略验证。
+
+下一阶段优先级：
+
+1. 建立仓库内 Playwright E2E 套件，优先覆盖学生预约、取消、咨询师处理、管理员查看四条演示路径。
+2. 拆分 `server/src/app.js`，先抽出 `routes/auth.js`、`routes/admin-dashboard.js`、`routes/appointments.js`，保持 API 行为不变。
+3. 为原生微信小程序制定真机验证清单，验证 token 刷新、强制改密、安全区和键盘遮挡。
+4. 建立 `codex/upgrade-uni-vite-toolchain` 分支，集中验证 DCloud alpha、Vite/esbuild、vue-i18n、jimp、ws 和 ExcelJS/uuid 升级风险。
+
 原始目录 `anxin-psychology-project` 仅作为只读历史来源，不再作为开发仓库。
 
 ## 当前完成度

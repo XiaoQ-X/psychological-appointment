@@ -1,5 +1,15 @@
 # API 接口文档
 
+## 2026-06-15 会话接口补充
+
+- 三个登录接口仍返回短期 `token`，但 refresh token 不再出现在 JSON 响应中；服务端通过 HttpOnly Cookie `anxin_refresh` 写入 refresh token。
+- `POST /api/auth/refresh`：公开接口，仅读取 HttpOnly refresh cookie。成功时轮换 refresh cookie，并返回新的短期 access token、`role`、`mustChangePassword` 和 `user`。
+- `POST /api/auth/logout`：无需 Authorization 也可调用，用于清除 `anxin_refresh` cookie；前端同时清空内存 access token。
+- access token payload 包含 `type=access`，refresh token payload 包含 `type=refresh`。接口会拒绝错误 token 类型。
+- access token 默认有效期为 `JWT_EXPIRES_IN` 或 `15m`；refresh token 默认有效期为 `JWT_REFRESH_EXPIRES_IN` 或 `7d`。
+- 自助改密或管理员重置学生/咨询师密码会递增 `sessionVersion`，旧 access token 和旧 refresh cookie 再访问时返回 `SESSION_REVOKED`。
+- access token 过期时业务接口返回 `TOKEN_EXPIRED`；H5 API client 会尝试调用 `/api/auth/refresh` 后重放一次请求。
+
 后端地址默认 `http://localhost:3000`。除登录和 `/health` 外，接口都需要请求头：
 
 ```http

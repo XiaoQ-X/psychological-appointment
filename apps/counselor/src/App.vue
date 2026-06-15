@@ -955,8 +955,8 @@ async function changePassword() {
   }
 }
 
-function logout() {
-  api.logout();
+async function logout() {
+  await api.logout();
   me.value = null;
   mustChangePassword.value = false;
   Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });
@@ -989,14 +989,13 @@ function saveCounselorProfile() {
 }
 
 onMounted(async () => {
-  if (!api.token()) return;
   try {
-    const data = await api.request("/api/auth/me");
+    const data = await api.refreshSession();
     me.value = data.user;
     mustChangePassword.value = Boolean(data.mustChangePassword || data.user?.mustChangePassword);
     if (!mustChangePassword.value) await loadCounselorData();
   } catch {
-    api.logout();
+    api.setToken(null);
   }
 });
 </script>

@@ -17,8 +17,14 @@ function jwtSecret() {
 }
 
 function signToken(user) {
-  return jwt.sign({ id: user.id, role: user.role, sessionVersion: user.sessionVersion || 1 }, jwtSecret(), {
-    expiresIn: process.env.JWT_EXPIRES_IN || "7d"
+  return jwt.sign({ id: user.id, role: user.role, sessionVersion: user.sessionVersion || 1, type: "access" }, jwtSecret(), {
+    expiresIn: process.env.JWT_EXPIRES_IN || "15m"
+  });
+}
+
+function signRefreshToken(user) {
+  return jwt.sign({ id: user.id, role: user.role, sessionVersion: user.sessionVersion || 1, type: "refresh" }, jwtSecret(), {
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d"
   });
 }
 
@@ -56,6 +62,9 @@ function requireAuth(roles = [], options = {}) {
     }
     try {
       const payload = jwt.verify(token, jwtSecret());
+      if (payload.type && payload.type !== "access") {
+        return fail(res, 401, "登录状态已失效", { code: "INVALID_TOKEN_TYPE" });
+      }
       if (roles.length && !roles.includes(payload.role)) {
         return fail(res, 403, "无权访问该接口");
       }
@@ -76,9 +85,9 @@ function requireAuth(roles = [], options = {}) {
       req.user = { id: payload.id, role: payload.role, profile };
       next();
     } catch (error) {
-      return fail(res, 401, "登录状态已失效", { name: error.name });
+      return fail(res, 401, "登录状态已失效", { name: error.name, code: error.name === "TokenExpiredError" ? "TOKEN_EXPIRED" : "TOKEN_INVALID" });
     }
   };
 }
 
-module.exports = { requireAuth, signToken, stripSecret, loadProfile };
+module.exports = { requireAuth, signToken, signRefreshToken, stripSecret, loadProfile, jwtSecret };

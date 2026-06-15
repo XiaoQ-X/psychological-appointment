@@ -2503,8 +2503,8 @@ async function changePassword() {
   });
 }
 
-function logout() {
-  api.logout();
+async function logout() {
+  await api.logout();
   me.value = null;
   mustChangePassword.value = false;
   Object.assign(passwordForm, { oldPassword: "", newPassword: "", confirmPassword: "" });
@@ -2780,13 +2780,14 @@ async function submitRisk() {
 }
 
 onMounted(async () => {
-  if (!api.token()) return;
-  await guard(async () => {
-    const data = await api.request("/api/auth/me");
+  try {
+    const data = await api.refreshSession();
     me.value = data.user;
     mustChangePassword.value = Boolean(data.mustChangePassword || data.user?.mustChangePassword);
     booking.contactPhone = data.user?.phone || "";
     if (!mustChangePassword.value) await loadAll();
-  });
+  } catch {
+    api.setToken(null);
+  }
 });
 </script>

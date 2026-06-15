@@ -101,6 +101,23 @@
 4. uni-app/Vite 升级及锁文件审查。
 5. 敏感操作日志留存、数据导出/删除和隐私合规流程。
 
+## 2026-06-15 会话安全更新
+
+- 已落地 H5 端更低风险方案：短期 access token 仅保存在内存中，refresh token 通过 HttpOnly Cookie `anxin_refresh` 保存并由 `/api/auth/refresh` 轮换。
+- 保留并扩展 `sessionVersion`：自助改密、管理员重置学生/咨询师密码后，旧 access token 和旧 refresh cookie 都会返回 `SESSION_REVOKED`。
+- 服务端区分 `type=access` 与 `type=refresh`，防止 refresh token 被当作业务 access token 使用。
+- `POST /api/auth/logout` 会清除 refresh cookie；H5 API client 同时清空内存 token。
+- 默认 access token 有效期为 15 分钟，refresh token 有效期为 7 天，可通过 `JWT_EXPIRES_IN` 和 `JWT_REFRESH_EXPIRES_IN` 配置。
+- 剩余风险：原生微信小程序仍需要独立验证平台 token 存储模型；HttpOnly refresh cookie 方案还应补充生产域名下的 `Secure`、`SameSite=None/Lax`、CSP、CSRF 策略和 HTTPS 部署验证。
+
+## 2026-06-15 依赖安全判断
+
+- 复查 `npm run audit:prod`：仍为 31 个漏洞，包含 9 high、22 moderate，无 critical。
+- 非强制 `npm audit fix --omit=dev --registry=https://registry.npmjs.org` 没有可安全落地更新；不使用 `--force`。
+- `uni-app / vue-i18n / jimp / ws`：漏洞主要来自 `@dcloudio/*` alpha 工具链传递依赖，`--force` 会安装破坏性/降级版本，需在独立升级分支验证 H5 与 mp-weixin。
+- `Vite / esbuild`：根 Vite 已在当前 lockfile 使用 6.4.3，但 uni-app 内部仍带旧链；需跟随 DCloud 5.13+ 工具链验证。
+- `ExcelJS / uuid`：`uuid <11.1.1` 由 `exceljs@4.4.0` 传递引入，强制修复会降级到 `exceljs@3.4.0`，本轮保留并要求后续替换/跟踪上游。
+
 ## 依赖升级判断（2026-06-14）
 
 - 已安全更新：非强制 `npm audit fix --omit=dev` 仅将根 lockfile 中 Vite 从 `6.4.2` 提升到 `6.4.3`，已通过 `npm ci`、四端 build 和 API 测试。
